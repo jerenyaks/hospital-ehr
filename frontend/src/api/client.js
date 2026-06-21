@@ -3,7 +3,7 @@ import axios from "axios";
 // In development the backend runs on :8000. When deploying for real,
 // this should come from an environment variable instead of being
 // hardcoded -- see the README for how to configure that.
-const API_BASE_URL = "http://localhost:8000";
+const API_BASE_URL = "https://hospital-ehr-backend.onrender.com";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
