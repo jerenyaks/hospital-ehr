@@ -1,12 +1,6 @@
 """
 User model: hospital staff accounts.
-
-Roles are deliberately a fixed enum rather than a free-text field or a
-separate permissions table. For a project this size, a fixed set of four
-roles (admin, doctor, nurse, receptionist) is easy to reason about and
-easy to grade/demo. A larger real-world system would likely use a proper
-permissions table for fine-grained access, but that's overkill here and
-would add complexity without adding clarity.
+Now includes pharmacist and lab_technician roles.
 """
 
 import enum
@@ -23,6 +17,8 @@ class UserRole(str, enum.Enum):
     doctor = "doctor"
     nurse = "nurse"
     receptionist = "receptionist"
+    pharmacist = "pharmacist"
+    lab_technician = "lab_technician"
 
 
 class User(Base):
@@ -36,13 +32,12 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    # Visits this user checked in (if receptionist)
     checked_in_visits = relationship(
         "Visit", back_populates="checked_in_by", foreign_keys="Visit.checked_in_by_id"
     )
-    # Vitals this user recorded (if nurse)
     recorded_vitals = relationship("Vitals", back_populates="recorded_by")
-    # Diagnoses this user made (if doctor)
     diagnoses_made = relationship("Diagnosis", back_populates="doctor")
-    # Prescriptions this user wrote (if doctor)
     prescriptions_written = relationship("Prescription", back_populates="doctor")
+    lab_tests_ordered = relationship("LabTest", back_populates="ordered_by", foreign_keys="LabTest.ordered_by_id")
+    lab_results_recorded = relationship("LabResult", back_populates="recorded_by")
+    dispensings_done = relationship("Dispensing", back_populates="dispensed_by")
