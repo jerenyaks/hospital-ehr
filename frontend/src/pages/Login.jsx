@@ -8,6 +8,8 @@ const ROLE_HOME = {
   doctor: "/doctor",
   nurse: "/nurse",
   receptionist: "/reception",
+  pharmacist: "/pharmacy",
+  lab_technician: "/lab",
 };
 
 export default function Login() {
