@@ -5,7 +5,7 @@ from app.core.config import settings
 from app.db.session import Base, engine
 import app.models  # noqa
 from app.routers import auth, users, patients, visits
-from app.routers import pharmacy, lab, billing
+from app.routers import pharmacy, lab, billing, reports
 
 Base.metadata.create_all(bind=engine)
 
@@ -30,6 +30,7 @@ app.include_router(visits.router)
 app.include_router(pharmacy.router)
 app.include_router(lab.router)
 app.include_router(billing.router)
+app.include_router(reports.router)
 
 
 @app.get("/")
