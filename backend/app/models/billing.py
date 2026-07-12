@@ -29,3 +29,22 @@ class Bill(Base):
 
     visit = relationship("Visit", back_populates="bill")
     patient = relationship("Patient")
+    # existing Bill class stays unchanged...
+
+class PharmacyBill(Base):
+    __tablename__ = "pharmacy_billing"
+
+    id = Column(Integer, primary_key=True, index=True)
+    prescription_id = Column(Integer, ForeignKey("prescriptions.id", ondelete="CASCADE"))
+    amount = Column(Float, default=0.0)
+    date = Column(DateTime, default=datetime.utcnow)
+
+
+class LabBill(Base):
+    __tablename__ = "lab_billing"
+
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"))
+    test_name = Column(String(100))
+    amount = Column(Float, default=0.0)
+    date = Column(DateTime, default=datetime.utcnow)

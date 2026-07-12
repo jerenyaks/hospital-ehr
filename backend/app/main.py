@@ -5,7 +5,7 @@ from app.core.config import settings
 from app.db.session import Base, engine
 import app.models  # noqa
 from app.routers import auth, users, patients, visits
-from app.routers import pharmacy, lab, billing, reports
+from app.routers import pharmacy, lab, billing, reports, enhancements
 
 Base.metadata.create_all(bind=engine)
 
@@ -23,6 +23,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Routers
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(patients.router)
@@ -31,12 +32,11 @@ app.include_router(pharmacy.router)
 app.include_router(lab.router)
 app.include_router(billing.router)
 app.include_router(reports.router)
-
+app.include_router(enhancements.router)
 
 @app.get("/")
 def root():
     return {"status": "ok", "service": settings.app_name, "version": "0.2.0"}
-
 
 @app.get("/health")
 def health_check():

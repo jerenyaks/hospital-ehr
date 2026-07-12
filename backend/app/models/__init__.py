@@ -1,12 +1,14 @@
-from app.models.user import User, UserRole
-from app.models.patient import Patient, Gender, BloodGroup
-from app.models.visit import Visit, VisitStatus, VisitType
-from app.models.vitals import Vitals
-from app.models.diagnosis import Diagnosis
-from app.models.prescription import Prescription
-from app.models.pharmacy import Medicine, Dispensing
-from app.models.lab import LabTest, LabResult, LabTestStatus
-from app.models.billing import Bill
+from .user import User, UserRole
+from .patient import Patient, Gender, BloodGroup
+from .visit import Visit, VisitStatus, VisitType
+from .vitals import Vitals
+from .diagnosis import Diagnosis
+from .prescription import Prescription
+from .pharmacy import Medicine, Dispensing
+from .lab import LabTest, LabResult, LabTestStatus
+from .billing import Bill
+from .doctor import Doctor
+from .appointment import Appointment
 
 __all__ = [
     "User", "UserRole",
@@ -16,4 +18,5 @@ __all__ = [
     "Medicine", "Dispensing",
     "LabTest", "LabResult", "LabTestStatus",
     "Bill",
+    "Doctor", "Appointment",
 ]

@@ -1,5 +1,5 @@
 """
-Billing routes: generate and manage patient bills.
+Billing routes: generate and manage patient bills, plus pharmacy, lab, and audit logs.
 """
 
 from typing import List, Optional
@@ -11,12 +11,14 @@ from pydantic import BaseModel
 from app.core.deps import require_role, get_current_user
 from app.db.session import get_db
 from app.models.user import User, UserRole
-from app.models.billing import Bill
+from app.models.billing import Bill, PharmacyBill, LabBill
 from app.models.visit import Visit
+from app.models.audit import AuditLog
 
+# Single router definition
 router = APIRouter(prefix="/billing", tags=["billing"])
 
-
+# ------------------ Pydantic Schemas ------------------
 class BillOut(BaseModel):
     id: int
     visit_id: int
@@ -37,7 +39,7 @@ class PayBillRequest(BaseModel):
     payment_method: str
     notes: Optional[str] = None
 
-
+# ------------------ Core Bill Endpoints ------------------
 @router.post("/generate/{visit_id}", response_model=BillOut, status_code=201)
 def generate_bill(
     visit_id: int,
@@ -50,12 +52,12 @@ def generate_bill(
     existing = db.query(Bill).filter(Bill.visit_id == visit_id).first()
     if existing:
         return existing
-    bill = Bill(visit_id=visit_id, patient_id=visit.patient_id, consultation_fee=500.0, total_amount=500.0)
+    bill = Bill(visit_id=visit_id, patient_id=visit.patient_id,
+                consultation_fee=500.0, total_amount=500.0)
     db.add(bill)
     db.commit()
     db.refresh(bill)
     return bill
-
 
 @router.get("/visit/{visit_id}", response_model=BillOut)
 def get_bill(
@@ -67,7 +69,6 @@ def get_bill(
     if not bill:
         raise HTTPException(status_code=404, detail="No bill found for this visit")
     return bill
-
 
 @router.patch("/{bill_id}/pay", response_model=BillOut)
 def mark_paid(
@@ -89,14 +90,12 @@ def mark_paid(
     db.refresh(bill)
     return bill
 
-
 @router.get("/unpaid", response_model=List[BillOut])
 def list_unpaid(
     db: Session = Depends(get_db),
     _staff: User = Depends(require_role(UserRole.receptionist, UserRole.admin)),
 ):
     return db.query(Bill).filter(Bill.is_paid == False).order_by(Bill.created_at.desc()).all()
-
 
 @router.get("/patient/{patient_id}", response_model=List[BillOut])
 def patient_billing_history(
@@ -105,3 +104,16 @@ def patient_billing_history(
     _user: User = Depends(get_current_user),
 ):
     return db.query(Bill).filter(Bill.patient_id == patient_id).order_by(Bill.created_at.desc()).all()
+
+# ------------------ New Endpoints ------------------
+@router.get("/pharmacy")
+def get_pharmacy_billing(db: Session = Depends(get_db)):
+    return db.query(PharmacyBill).all()
+
+@router.get("/lab")
+def get_lab_billing(db: Session = Depends(get_db)):
+    return db.query(LabBill).all()
+
+@router.get("/audit")
+def get_audit_logs(db: Session = Depends(get_db)):
+    return db.query(AuditLog).order_by(AuditLog.timestamp.desc()).all()

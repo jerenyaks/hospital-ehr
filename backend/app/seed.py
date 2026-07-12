@@ -1,3 +1,7 @@
+from database import engine
+from models import Base
+
+
 """
 Seed script: creates demo staff accounts, sample medicine inventory,
 and demo patients with visits at different workflow stages so the
@@ -138,6 +142,15 @@ def seed():
     finally:
         db.close()
 
+
+def print_summary():
+    print("\nSeed complete.")
+    print("Accounts: admin / doctor / nurse / reception / pharmacy / lab @hospital.ke")
+    print("Passwords: role name + 123 (e.g. admin123, pharmacy123, lab123)")
+
+
+if __name__ == "__main__":
+    seed()
 
 def print_summary():
     print("\nSeed complete.")
