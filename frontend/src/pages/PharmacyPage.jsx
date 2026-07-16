@@ -6,6 +6,7 @@ import { pharmacyApi } from "../api/endpoints";
 export default function PharmacyPage() {
   const [medicines, setMedicines] = useState([]);
   const [lowStock, setLowStock] = useState([]);
+  const [pendingPrescriptions, setPendingPrescriptions] = useState([]);
   const [tab, setTab] = useState("dispense");
   const [prescriptionId, setPrescriptionId] = useState("");
   const [selectedMedicine, setSelectedMedicine] = useState("");
@@ -17,8 +18,12 @@ export default function PharmacyPage() {
 
   const loadData = async () => {
     try {
-      const [meds, low] = await Promise.all([pharmacyApi.getMedicines(), pharmacyApi.getLowStock()]);
-      setMedicines(meds); setLowStock(low);
+      const [meds, low, pending] = await Promise.all([
+        pharmacyApi.getMedicines(),
+        pharmacyApi.getLowStock(),
+        pharmacyApi.getPendingPrescriptions(),
+      ]);
+      setMedicines(meds); setLowStock(low); setPendingPrescriptions(pending);
     } catch { setError("Could not load medicines."); }
   };
 
@@ -50,7 +55,7 @@ export default function PharmacyPage() {
       <div style={{ maxWidth: "1000px", margin: "0 auto", padding: "var(--space-6)" }}>
         {lowStock.length > 0 && (
           <div style={{ background: "var(--color-warning-light)", border: "1px solid var(--color-warning)", borderRadius: "var(--radius)", padding: "var(--space-3) var(--space-4)", marginBottom: "var(--space-4)", color: "var(--color-warning)", fontSize: 13, fontWeight: 500 }}>
-            ⚠ Low stock alert: {lowStock.map(m => m.name).join(", ")}
+            Low stock alert: {lowStock.map(m => m.name).join(", ")}
           </div>
         )}
         <div style={{ display: "flex", gap: "var(--space-3)", marginBottom: "var(--space-5)" }}>
@@ -67,10 +72,22 @@ export default function PharmacyPage() {
         {tab === "dispense" && (
           <Card>
             <h3 style={{ marginBottom: "var(--space-4)" }}>Dispense medicine for a prescription</h3>
+            {pendingPrescriptions.length === 0 && (
+              <p style={{ color: "var(--color-text-muted)", fontSize: 13, marginBottom: "var(--space-4)" }}>No pending prescriptions right now.</p>
+            )}
             <form onSubmit={handleDispense} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-4)" }}>
-              <Field label="Prescription ID" required>
-                <input style={inputStyle} type="number" value={prescriptionId} onChange={e => setPrescriptionId(e.target.value)} placeholder="Enter prescription ID" required />
-              </Field>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <Field label="Prescription" required>
+                  <select style={inputStyle} value={prescriptionId} onChange={e => setPrescriptionId(e.target.value)} required>
+                    <option value="">Select a prescription...</option>
+                    {pendingPrescriptions.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.medication_name} {p.dosage} — {p.frequency}, {p.duration} (Patient #{p.patient_id})
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
               <Field label="Medicine" required>
                 <select style={inputStyle} value={selectedMedicine} onChange={e => setSelectedMedicine(e.target.value)} required>
                   <option value="">Select medicine...</option>
@@ -80,7 +97,7 @@ export default function PharmacyPage() {
               <Field label="Quantity" required>
                 <input style={inputStyle} type="number" min="1" value={quantity} onChange={e => setQuantity(e.target.value)} required />
               </Field>
-              <div style={{ display: "flex", alignItems: "flex-end" }}>
+              <div style={{ display: "flex", alignItems: "flex-end", gridColumn: "1 / -1" }}>
                 <Button type="submit" disabled={loading} style={{ width: "100%" }}>{loading ? "Dispensing..." : "Dispense"}</Button>
               </div>
             </form>
