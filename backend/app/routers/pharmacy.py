@@ -95,6 +95,30 @@ def low_stock_alert(
     return db.query(Medicine).filter(Medicine.stock_quantity <= Medicine.reorder_level).all()
 
 
+@router.get("/prescriptions/pending")
+def list_pending_prescriptions(
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    """Prescriptions that have not yet been (fully) dispensed, for the pharmacist to pick from."""
+    prescriptions = db.query(Prescription).order_by(Prescription.prescribed_at.desc()).all()
+    result = []
+    for p in prescriptions:
+        already_dispensed = db.query(Dispensing).filter(Dispensing.prescription_id == p.id).first()
+        if already_dispensed:
+            continue
+        patient_id = p.visit.patient_id if p.visit else None
+        result.append({
+            "id": p.id,
+            "medication_name": p.medication_name,
+            "dosage": p.dosage,
+            "frequency": p.frequency,
+            "duration": p.duration,
+            "patient_id": patient_id,
+        })
+    return result
+
+
 @router.post("/dispense", status_code=201)
 def dispense_medicine(
     payload: DispensingCreate,

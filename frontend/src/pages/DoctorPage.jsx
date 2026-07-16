@@ -2,13 +2,15 @@ import { useState, useEffect } from "react";
 import TopBar from "../components/TopBar";
 import { Card, Button, Field, inputStyle, ErrorBanner, SuccessBanner } from "../components/ui";
 import StatusPill from "../components/StatusPill";
-import { visitsApi, patientsApi, labApi } from "../api/endpoints";
+import { visitsApi, patientsApi, labApi, pharmacyApi } from "../api/endpoints";
 
 const BLANK_DIAGNOSIS = { condition: "", icd10_code: "", notes: "" };
 const BLANK_PRESCRIPTION = { medication_name: "", dosage: "", frequency: "", duration: "", instructions: "" };
 const BLANK_LAB = { test_name: "", test_category: "", notes: "" };
 
 export default function DoctorPage() {
+  const [pageMode, setPageMode] = useState("consult");
+
   const [queue, setQueue] = useState([]);
   const [inpatients, setInpatients] = useState([]);
   const [patientNames, setPatientNames] = useState({});
@@ -17,6 +19,7 @@ export default function DoctorPage() {
   const [patient, setPatient] = useState(null);
   const [history, setHistory] = useState([]);
   const [labTests, setLabTests] = useState([]);
+  const [dispensingByPrescription, setDispensingByPrescription] = useState({});
   const [activeTab, setActiveTab] = useState("queue");
   const [diagnosisForm, setDiagnosisForm] = useState(BLANK_DIAGNOSIS);
   const [prescriptionForm, setPrescriptionForm] = useState(BLANK_PRESCRIPTION);
@@ -27,6 +30,9 @@ export default function DoctorPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const [medicines, setMedicines] = useState([]);
+  const [pharmacyLoading, setPharmacyLoading] = useState(false);
 
   const loadQueue = async () => {
     try {
@@ -43,11 +49,32 @@ export default function DoctorPage() {
     } catch { setError("Could not load queue."); }
   };
 
+  const loadPharmacy = async () => {
+    setPharmacyLoading(true);
+    try { setMedicines(await pharmacyApi.getMedicines()); }
+    catch { setError("Could not load pharmacy inventory."); }
+    finally { setPharmacyLoading(false); }
+  };
+
   useEffect(() => {
     const t = setTimeout(loadQueue, 0);
     const i = setInterval(loadQueue, 15000);
     return () => { clearTimeout(t); clearInterval(i); };
   }, []);
+
+  useEffect(() => {
+    if (pageMode === "pharmacy") loadPharmacy();
+  }, [pageMode]);
+
+  const loadDispensingStatus = async (prescriptions) => {
+    const statusMap = {};
+    for (const p of prescriptions || []) {
+      try {
+        statusMap[p.id] = await pharmacyApi.getDispensings(p.id);
+      } catch { statusMap[p.id] = []; }
+    }
+    setDispensingByPrescription(statusMap);
+  };
 
   const handleSelectVisit = async (visit) => {
     setSelectedVisit(visit);
@@ -61,6 +88,7 @@ export default function DoctorPage() {
       ]);
       setVisitDetail(detail); setPatient(patientData);
       setHistory(historyData.filter(h => h.id !== visit.id)); setLabTests(tests);
+      await loadDispensingStatus(detail.prescriptions);
     } catch { setError("Could not load patient details."); }
   };
 
@@ -68,6 +96,7 @@ export default function DoctorPage() {
     if (!selectedVisit) return;
     const [detail, tests] = await Promise.all([visitsApi.getDetail(selectedVisit.id), labApi.getVisitTests(selectedVisit.id)]);
     setVisitDetail(detail); setLabTests(tests);
+    await loadDispensingStatus(detail.prescriptions);
   };
 
   const handleAddDiagnosis = async (e) => {
@@ -119,6 +148,33 @@ export default function DoctorPage() {
     <div>
       <TopBar title="Consultation" />
       <div style={{ maxWidth: "1180px", margin: "0 auto", padding: "var(--space-6)" }}>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: "var(--space-4)" }}>
+          <ModeBtn active={pageMode === "consult"} onClick={() => setPageMode("consult")}>Consultations</ModeBtn>
+          <ModeBtn active={pageMode === "pharmacy"} onClick={() => setPageMode("pharmacy")}>Pharmacy Inventory</ModeBtn>
+        </div>
+
+        {pageMode === "pharmacy" ? (
+          <Card>
+            <h3 style={{ marginBottom: "var(--space-4)" }}>Pharmacy inventory (view only)</h3>
+            {pharmacyLoading && <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>Loading...</p>}
+            {!pharmacyLoading && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 8, padding: "8px 12px", fontSize: 12, fontWeight: 600, color: "var(--color-text-muted)", borderBottom: "1px solid var(--color-border)" }}>
+                  <span>Medicine</span><span>Category</span><span>Unit of measure</span><span>Price (KES)</span>
+                </div>
+                {medicines.map(m => (
+                  <div key={m.id} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 8, padding: "10px 12px", fontSize: 13, borderRadius: "var(--radius-sm)", background: m.stock_quantity <= m.reorder_level ? "var(--color-warning-light)" : "transparent" }}>
+                    <span style={{ fontWeight: 500 }}>{m.name}</span>
+                    <span style={{ color: "var(--color-text-muted)" }}>{m.category || "—"}</span>
+                    <span style={{ color: "var(--color-text)" }}>{m.unit}</span>
+                    <span>{m.unit_price.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        ) : (
         <div style={{ display: "grid", gridTemplateColumns: "0.8fr 1.5fr", gap: "var(--space-5)" }}>
           <div>
             <div style={{ display: "flex", gap: 8, marginBottom: "var(--space-3)" }}>
@@ -229,9 +285,29 @@ export default function DoctorPage() {
                 <Card>
                   <h4 style={{ marginBottom: "var(--space-3)" }}>Prescriptions</h4>
                   {visitDetail?.prescriptions?.length > 0 && (
-                    <ul style={{ margin: "0 0 var(--space-3)", paddingLeft: 18, fontSize: 13 }}>
-                      {visitDetail.prescriptions.map(p => <li key={p.id}>{p.medication_name} {p.dosage} — {p.frequency}, {p.duration}</li>)}
-                    </ul>
+                    <div style={{ marginBottom: "var(--space-3)", display: "flex", flexDirection: "column", gap: 6 }}>
+                      {visitDetail.prescriptions.map(p => {
+                        const dispensings = dispensingByPrescription[p.id] || [];
+                        const totalDispensed = dispensings.reduce((sum, d) => sum + d.quantity_dispensed, 0);
+                        return (
+                          <div key={p.id} style={{ fontSize: 13, padding: "8px 12px", background: "var(--color-bg)", borderRadius: "var(--radius-sm)" }}>
+                            <span style={{ fontWeight: 500 }}>{p.medication_name} {p.dosage}</span>
+                            <span style={{ color: "var(--color-text-muted)" }}> — {p.frequency}, {p.duration}</span>
+                            <div style={{ marginTop: 4 }}>
+                              {dispensings.length > 0 ? (
+                                <span style={{ fontSize: 11, fontWeight: 600, color: "var(--color-success)", textTransform: "uppercase" }}>
+                                  Dispensed ({totalDispensed} units)
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: 11, fontWeight: 600, color: "var(--color-warning)", textTransform: "uppercase" }}>
+                                  Not yet dispensed
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                   <form onSubmit={handleAddPrescription} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-3)" }}>
                     <Field label="Medication" required><input style={inputStyle} value={prescriptionForm.medication_name} onChange={e => setPrescriptionForm(f => ({ ...f, medication_name: e.target.value }))} required /></Field>
@@ -269,6 +345,7 @@ export default function DoctorPage() {
             )}
           </div>
         </div>
+        )}
       </div>
     </div>
   );
@@ -280,5 +357,13 @@ function VitalStat({ label, value }) {
       <div style={{ color: "var(--color-text-muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</div>
       <div style={{ fontWeight: 600 }}>{value}</div>
     </div>
+  );
+}
+
+function ModeBtn({ active, onClick, children }) {
+  return (
+    <button onClick={onClick} style={{ padding: "10px 18px", borderRadius: "var(--radius-sm)", border: active ? "1px solid var(--color-primary)" : "1px solid var(--color-border)", background: active ? "var(--color-primary-light)" : "var(--color-surface)", color: active ? "var(--color-primary-dark)" : "var(--color-text-muted)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+      {children}
+    </button>
   );
 }

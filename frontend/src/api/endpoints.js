@@ -57,6 +57,8 @@ export const pharmacyApi = {
   updateMedicine: async (id, payload) => { const { data } = await api.patch(`/pharmacy/medicines/${id}`, payload); return data; },
   getLowStock: async () => { const { data } = await api.get("/pharmacy/medicines/low-stock"); return data; },
   dispense: async (payload) => { const { data } = await api.post("/pharmacy/dispense", payload); return data; },
+  getDispensings: async (prescriptionId) => { const { data } = await api.get(`/pharmacy/dispensings/prescription/${prescriptionId}`); return data; },
+  getPendingPrescriptions: async () => { const { data } = await api.get("/pharmacy/prescriptions/pending"); return data; },
 };
 
 export const billingApi = {
