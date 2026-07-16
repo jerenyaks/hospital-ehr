@@ -17,7 +17,6 @@ export default function ReceptionPage() {
   const [search, setSearch] = useState("");
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [chiefComplaint, setChiefComplaint] = useState("");
-  const [visitType, setVisitType] = useState("outpatient");
   const [form, setForm] = useState(BLANK_PATIENT);
   const [todaysVisits, setTodaysVisits] = useState([]);
   const [unpaidBills, setUnpaidBills] = useState([]);
@@ -45,10 +44,10 @@ export default function ReceptionPage() {
     if (!selectedPatient) return;
     setError(""); setSuccess(""); setLoading(true);
     try {
-      const visit = await visitsApi.checkIn(selectedPatient.id, chiefComplaint, visitType);
+      const visit = await visitsApi.checkIn(selectedPatient.id, chiefComplaint, "outpatient");
       await billingApi.generate(visit.id);
       setSuccess(`${selectedPatient.first_name} ${selectedPatient.last_name} checked in. Bill generated.`);
-      setSelectedPatient(null); setChiefComplaint(""); setSearch(""); setPatients([]); setVisitType("outpatient");
+      setSelectedPatient(null); setChiefComplaint(""); setSearch(""); setPatients([]);
       loadVisits();
     } catch (err) { setError(err.response?.data?.detail || "Couldn't check in this patient."); }
     finally { setLoading(false); }
@@ -114,12 +113,6 @@ export default function ReceptionPage() {
                   <Field label="Reason for visit">
                     <textarea style={{ ...inputStyle, minHeight: 70, resize: "vertical" }} value={chiefComplaint} onChange={e => setChiefComplaint(e.target.value)} placeholder="e.g. Fever and headache for 3 days" />
                   </Field>
-                  <Field label="Visit type" required>
-                    <select style={{ ...inputStyle, marginTop: 8 }} value={visitType} onChange={e => setVisitType(e.target.value)}>
-                      <option value="outpatient">Outpatient</option>
-                      <option value="inpatient">Inpatient</option>
-                    </select>
-                  </Field>
                   <Button onClick={handleCheckIn} disabled={loading} style={{ marginTop: "var(--space-3)", width: "100%" }}>
                     {loading ? "Checking in..." : `Check in ${selectedPatient.first_name}`}
                   </Button>
@@ -132,7 +125,7 @@ export default function ReceptionPage() {
                 {todaysVisits.length === 0 && <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>No visits yet today.</p>}
                 {todaysVisits.map(v => (
                   <div key={v.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--color-border)", fontSize: 13 }}>
-                    <span>Visit #{v.id} · {v.visit_type}</span>
+                    <span>Visit #{v.id}</span>
                     <StatusPill status={v.status} />
                   </div>
                 ))}
@@ -181,10 +174,11 @@ export default function ReceptionPage() {
             {unpaidBills.length === 0 && <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>No unpaid bills right now.</p>}
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {unpaidBills.map(bill => (
-                <div key={bill.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr auto", gap: 12, alignItems: "center", padding: "12px 14px", border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)", fontSize: 13 }}>
+                <div key={bill.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr auto", gap: 12, alignItems: "center", padding: "12px 14px", border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)", fontSize: 13 }}>
                   <div><div style={{ fontWeight: 600 }}>Visit #{bill.visit_id}</div><div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>Patient #{bill.patient_id}</div></div>
                   <div><div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>Consultation</div><div>KES {bill.consultation_fee}</div></div>
-                  <div><div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>Lab + Pharmacy</div><div>KES {(bill.lab_fee + bill.pharmacy_fee).toFixed(0)}</div></div>
+                  <div><div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>Lab</div><div>KES {bill.lab_fee.toFixed(0)}</div></div>
+                  <div><div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>Pharmacy</div><div>KES {bill.pharmacy_fee.toFixed(0)}</div></div>
                   <div><div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>Total</div><div style={{ fontWeight: 600, color: "var(--color-primary-dark)" }}>KES {bill.total_amount.toFixed(0)}</div></div>
                   <Button onClick={() => handlePayBill(bill)} style={{ padding: "8px 14px", fontSize: 12 }}>Mark paid</Button>
                 </div>
