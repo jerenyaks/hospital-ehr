@@ -6,13 +6,15 @@ from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from pydantic import BaseModel
 
 from app.core.deps import require_role, get_current_user
 from app.db.session import get_db
 from app.models.user import User, UserRole
 from app.models.billing import Bill, PharmacyBill, LabBill
-from app.models.visit import Visit
+from app.models.visit import Visit, VisitType
+from app.models.prescription import Prescription
 from app.models.audit import AuditLog
 
 # Single router definition
@@ -104,6 +106,37 @@ def patient_billing_history(
     _user: User = Depends(get_current_user),
 ):
     return db.query(Bill).filter(Bill.patient_id == patient_id).order_by(Bill.created_at.desc()).all()
+
+# ------------------ Reports ------------------
+@router.get("/reports/summary")
+def reports_summary(
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    total_visits = db.query(Visit).count()
+    outpatient_count = db.query(Visit).filter(Visit.visit_type == VisitType.outpatient).count()
+    inpatient_count = db.query(Visit).filter(Visit.visit_type == VisitType.inpatient).count()
+    total_prescriptions = db.query(Prescription).count()
+
+    consultation_revenue = db.query(func.sum(Bill.consultation_fee)).scalar() or 0
+    lab_revenue = db.query(func.sum(Bill.lab_fee)).scalar() or 0
+    pharmacy_revenue = db.query(func.sum(Bill.pharmacy_fee)).scalar() or 0
+    total_revenue = db.query(func.sum(Bill.total_amount)).scalar() or 0
+    paid_revenue = db.query(func.sum(Bill.total_amount)).filter(Bill.is_paid == True).scalar() or 0
+    unpaid_revenue = total_revenue - paid_revenue
+
+    return {
+        "total_visits": total_visits,
+        "outpatient_count": outpatient_count,
+        "inpatient_count": inpatient_count,
+        "total_prescriptions": total_prescriptions,
+        "consultation_revenue": round(consultation_revenue, 2),
+        "lab_revenue": round(lab_revenue, 2),
+        "pharmacy_revenue": round(pharmacy_revenue, 2),
+        "total_revenue": round(total_revenue, 2),
+        "paid_revenue": round(paid_revenue, 2),
+        "unpaid_revenue": round(unpaid_revenue, 2),
+    }
 
 # ------------------ New Endpoints ------------------
 @router.get("/pharmacy")

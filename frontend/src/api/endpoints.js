@@ -62,6 +62,7 @@ export const pharmacyApi = {
 };
 
 export const billingApi = {
+  getReportsSummary: async () => { const { data } = await api.get("/billing/reports/summary"); return data; },
   generate: async (visitId) => { const { data } = await api.post(`/billing/generate/${visitId}`); return data; },
   getByVisit: async (visitId) => { const { data } = await api.get(`/billing/visit/${visitId}`); return data; },
   pay: async (billId, paymentMethod) => { const { data } = await api.patch(`/billing/${billId}/pay`, { payment_method: paymentMethod }); return data; },
