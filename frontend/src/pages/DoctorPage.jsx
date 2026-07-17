@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import TopBar from "../components/TopBar";
 import { Card, Button, Field, inputStyle, ErrorBanner, SuccessBanner } from "../components/ui";
 import StatusPill from "../components/StatusPill";
-import { visitsApi, patientsApi, labApi, pharmacyApi, billingApi } from "../api/endpoints";
+import { visitsApi, patientsApi, labApi, pharmacyApi } from "../api/endpoints";
 
 const BLANK_DIAGNOSIS = { condition: "", icd10_code: "", notes: "" };
 const BLANK_PRESCRIPTION = { medication_name: "", dosage: "", frequency: "", duration: "", instructions: "" };
@@ -34,9 +34,6 @@ export default function DoctorPage() {
   const [medicines, setMedicines] = useState([]);
   const [pharmacyLoading, setPharmacyLoading] = useState(false);
 
-  const [reportData, setReportData] = useState(null);
-  const [reportLoading, setReportLoading] = useState(false);
-
   const loadQueue = async () => {
     try {
       const [visits, ip] = await Promise.all([visitsApi.list("with_doctor"), visitsApi.getActiveInpatients()]);
@@ -62,19 +59,12 @@ export default function DoctorPage() {
   useEffect(() => {
     const t = setTimeout(loadQueue, 0);
     const i = setInterval(loadQueue, 15000);
+    loadPharmacy();
     return () => { clearTimeout(t); clearInterval(i); };
   }, []);
 
-  const loadReports = async () => {
-    setReportLoading(true);
-    try { setReportData(await billingApi.getReportsSummary()); }
-    catch { setError("Could not load reports."); }
-    finally { setReportLoading(false); }
-  };
-
   useEffect(() => {
     if (pageMode === "pharmacy") loadPharmacy();
-    if (pageMode === "reports") loadReports();
   }, [pageMode]);
 
   const loadDispensingStatus = async (prescriptions) => {
@@ -163,41 +153,22 @@ export default function DoctorPage() {
         <div style={{ display: "flex", gap: 8, marginBottom: "var(--space-4)" }}>
           <ModeBtn active={pageMode === "consult"} onClick={() => setPageMode("consult")}>Consultations</ModeBtn>
           <ModeBtn active={pageMode === "pharmacy"} onClick={() => setPageMode("pharmacy")}>Pharmacy Inventory</ModeBtn>
-          <ModeBtn active={pageMode === "reports"} onClick={() => setPageMode("reports")}>Reports</ModeBtn>
         </div>
 
-        {pageMode === "reports" ? (
-          <Card>
-            <h3 style={{ marginBottom: "var(--space-4)" }}>Hospital summary</h3>
-            {reportLoading && <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>Loading...</p>}
-            {!reportLoading && reportData && (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "var(--space-4)" }}>
-                <ReportStat label="Total visits" value={reportData.total_visits} />
-                <ReportStat label="Outpatient visits" value={reportData.outpatient_count} />
-                <ReportStat label="Inpatient visits" value={reportData.inpatient_count} />
-                <ReportStat label="Prescriptions issued" value={reportData.total_prescriptions} />
-                <ReportStat label="Consultation revenue" value={`KES ${reportData.consultation_revenue}`} />
-                <ReportStat label="Lab revenue" value={`KES ${reportData.lab_revenue}`} />
-                <ReportStat label="Pharmacy revenue" value={`KES ${reportData.pharmacy_revenue}`} />
-                <ReportStat label="Total revenue" value={`KES ${reportData.total_revenue}`} />
-                <ReportStat label="Paid" value={`KES ${reportData.paid_revenue}`} />
-                <ReportStat label="Unpaid" value={`KES ${reportData.unpaid_revenue}`} />
-              </div>
-            )}
-          </Card>
-        ) : pageMode === "pharmacy" ? (
+        {pageMode === "pharmacy" ? (
           <Card>
             <h3 style={{ marginBottom: "var(--space-4)" }}>Pharmacy inventory (view only)</h3>
             {pharmacyLoading && <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>Loading...</p>}
             {!pharmacyLoading && (
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 8, padding: "8px 12px", fontSize: 12, fontWeight: 600, color: "var(--color-text-muted)", borderBottom: "1px solid var(--color-border)" }}>
-                  <span>Medicine</span><span>Category</span><span>Unit of measure</span><span>Price (KES)</span>
+                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", gap: 8, padding: "8px 12px", fontSize: 12, fontWeight: 600, color: "var(--color-text-muted)", borderBottom: "1px solid var(--color-border)" }}>
+                  <span>Medicine</span><span>Category</span><span>Amount</span><span>Unit of measure</span><span>Price (KES)</span>
                 </div>
                 {medicines.map(m => (
-                  <div key={m.id} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 8, padding: "10px 12px", fontSize: 13, borderRadius: "var(--radius-sm)", background: m.stock_quantity <= m.reorder_level ? "var(--color-warning-light)" : "transparent" }}>
+                  <div key={m.id} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", gap: 8, padding: "10px 12px", fontSize: 13, borderRadius: "var(--radius-sm)", background: m.stock_quantity <= m.reorder_level ? "var(--color-warning-light)" : "transparent" }}>
                     <span style={{ fontWeight: 500 }}>{m.name}</span>
                     <span style={{ color: "var(--color-text-muted)" }}>{m.category || "—"}</span>
+                    <span style={{ color: m.stock_quantity <= m.reorder_level ? "var(--color-warning)" : "var(--color-text)" }}>{m.stock_quantity}</span>
                     <span style={{ color: "var(--color-text)" }}>{m.unit}</span>
                     <span>{m.unit_price.toFixed(2)}</span>
                   </div>
@@ -341,7 +312,12 @@ export default function DoctorPage() {
                     </div>
                   )}
                   <form onSubmit={handleAddPrescription} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-3)" }}>
-                    <Field label="Medication" required><input style={inputStyle} value={prescriptionForm.medication_name} onChange={e => setPrescriptionForm(f => ({ ...f, medication_name: e.target.value }))} required /></Field>
+                    <Field label="Medication" required>
+                      <select style={inputStyle} value={prescriptionForm.medication_name} onChange={e => setPrescriptionForm(f => ({ ...f, medication_name: e.target.value }))} required>
+                        <option value="">Select medicine...</option>
+                        {medicines.map(m => <option key={m.id} value={m.name}>{m.name} ({m.unit})</option>)}
+                      </select>
+                    </Field>
                     <Field label="Dosage" required><input style={inputStyle} value={prescriptionForm.dosage} onChange={e => setPrescriptionForm(f => ({ ...f, dosage: e.target.value }))} placeholder="e.g. 500mg" required /></Field>
                     <Field label="Frequency" required><input style={inputStyle} value={prescriptionForm.frequency} onChange={e => setPrescriptionForm(f => ({ ...f, frequency: e.target.value }))} placeholder="e.g. 3 times a day" required /></Field>
                     <Field label="Duration" required><input style={inputStyle} value={prescriptionForm.duration} onChange={e => setPrescriptionForm(f => ({ ...f, duration: e.target.value }))} placeholder="e.g. 7 days" required /></Field>
@@ -387,15 +363,6 @@ function VitalStat({ label, value }) {
     <div>
       <div style={{ color: "var(--color-text-muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</div>
       <div style={{ fontWeight: 600 }}>{value}</div>
-    </div>
-  );
-}
-
-function ReportStat({ label, value }) {
-  return (
-    <div style={{ padding: "var(--space-3)", background: "var(--color-bg)", borderRadius: "var(--radius-sm)" }}>
-      <div style={{ color: "var(--color-text-muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</div>
-      <div style={{ fontWeight: 700, fontSize: 20, marginTop: 4 }}>{value}</div>
     </div>
   );
 }
