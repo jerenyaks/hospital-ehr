@@ -91,7 +91,7 @@ export default function PharmacyPage() {
               <Field label="Medicine" required>
                 <select style={inputStyle} value={selectedMedicine} onChange={e => setSelectedMedicine(e.target.value)} required>
                   <option value="">Select medicine...</option>
-                  {medicines.map(m => <option key={m.id} value={m.id}>{m.name} (Stock: {m.stock_quantity} {m.unit})</option>)}
+                  {medicines.map(m => <option key={m.id} value={m.id}>{m.name} — Amount: {m.stock_quantity}, Unit: {m.unit}</option>)}
                 </select>
               </Field>
               <Field label="Quantity" required>
@@ -108,14 +108,15 @@ export default function PharmacyPage() {
           <Card>
             <h3 style={{ marginBottom: "var(--space-4)" }}>Medicine inventory</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", gap: 8, padding: "8px 12px", fontSize: 12, fontWeight: 600, color: "var(--color-text-muted)", borderBottom: "1px solid var(--color-border)" }}>
-                <span>Medicine</span><span>Category</span><span>Stock</span><span>Reorder</span><span>Price (KES)</span>
+              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr", gap: 8, padding: "8px 12px", fontSize: 12, fontWeight: 600, color: "var(--color-text-muted)", borderBottom: "1px solid var(--color-border)" }}>
+                <span>Medicine</span><span>Category</span><span>Amount</span><span>Unit of measure</span><span>Reorder</span><span>Price (KES)</span>
               </div>
               {medicines.map(m => (
-                <div key={m.id} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", gap: 8, padding: "10px 12px", fontSize: 13, borderRadius: "var(--radius-sm)", background: m.stock_quantity <= m.reorder_level ? "var(--color-warning-light)" : "transparent", border: `1px solid ${m.stock_quantity <= m.reorder_level ? "var(--color-warning)" : "transparent"}` }}>
+                <div key={m.id} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr", gap: 8, padding: "10px 12px", fontSize: 13, borderRadius: "var(--radius-sm)", background: m.stock_quantity <= m.reorder_level ? "var(--color-warning-light)" : "transparent", border: `1px solid ${m.stock_quantity <= m.reorder_level ? "var(--color-warning)" : "transparent"}` }}>
                   <span style={{ fontWeight: 500 }}>{m.name}</span>
                   <span style={{ color: "var(--color-text-muted)" }}>{m.category || "—"}</span>
-                  <span style={{ color: m.stock_quantity <= m.reorder_level ? "var(--color-warning)" : "var(--color-text)" }}>{m.stock_quantity} {m.unit}</span>
+                  <span style={{ color: m.stock_quantity <= m.reorder_level ? "var(--color-warning)" : "var(--color-text)" }}>{m.stock_quantity}</span>
+                  <span style={{ color: "var(--color-text)" }}>{m.unit}</span>
                   <span style={{ color: "var(--color-text-muted)" }}>{m.reorder_level}</span>
                   <span>{m.unit_price.toFixed(2)}</span>
                 </div>
