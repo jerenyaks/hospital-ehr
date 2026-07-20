@@ -12,6 +12,7 @@ from app.core.deps import require_role, get_current_user
 from app.db.session import get_db
 from app.models.user import User, UserRole
 from app.models.lab import LabTest, LabResult, LabTestStatus
+from app.models.lab_catalog import LabTestCatalog
 from app.models.billing import Bill
 
 router = APIRouter(prefix="/lab", tags=["lab"])
@@ -60,6 +61,39 @@ class LabTestDetailOut(BaseModel):
     ordered_at: datetime
     result: Optional[LabResultOut]
     class Config: from_attributes = True
+
+class LabCatalogCreate(BaseModel):
+    test_name: str
+    category: Optional[str] = None
+    price: float = 200.0
+
+class LabCatalogOut(BaseModel):
+    id: int
+    test_name: str
+    category: Optional[str]
+    price: float
+    class Config: from_attributes = True
+
+
+@router.get("/catalog", response_model=List[LabCatalogOut])
+def list_catalog(
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    return db.query(LabTestCatalog).order_by(LabTestCatalog.test_name).all()
+
+
+@router.post("/catalog", response_model=LabCatalogOut, status_code=201)
+def add_catalog_entry(
+    payload: LabCatalogCreate,
+    db: Session = Depends(get_db),
+    _staff: User = Depends(require_role(UserRole.lab_technician, UserRole.admin)),
+):
+    entry = LabTestCatalog(**payload.model_dump())
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return entry
 
 
 @router.post("/tests", response_model=LabTestOut, status_code=201)

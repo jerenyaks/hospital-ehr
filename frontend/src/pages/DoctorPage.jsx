@@ -33,6 +33,7 @@ export default function DoctorPage() {
 
   const [medicines, setMedicines] = useState([]);
   const [pharmacyLoading, setPharmacyLoading] = useState(false);
+  const [labCatalog, setLabCatalog] = useState([]);
 
   const loadQueue = async () => {
     try {
@@ -60,6 +61,7 @@ export default function DoctorPage() {
     const t = setTimeout(loadQueue, 0);
     const i = setInterval(loadQueue, 15000);
     loadPharmacy();
+    labApi.getCatalog().then(setLabCatalog).catch(() => {});
     return () => { clearTimeout(t); clearInterval(i); };
   }, []);
 
@@ -277,8 +279,16 @@ export default function DoctorPage() {
                     </div>
                   )}
                   <form onSubmit={handleOrderLab} style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "var(--space-3)" }}>
-                    <Field label="Test name" required><input style={inputStyle} value={labForm.test_name} onChange={e => setLabForm(f => ({ ...f, test_name: e.target.value }))} placeholder="e.g. Malaria RDT, Full Blood Count" required /></Field>
-                    <Field label="Category"><input style={inputStyle} value={labForm.test_category} onChange={e => setLabForm(f => ({ ...f, test_category: e.target.value }))} placeholder="e.g. Haematology" /></Field>
+                    <Field label="Test name" required>
+                      <select style={inputStyle} value={labForm.test_name} onChange={e => {
+                        const chosen = labCatalog.find(c => c.test_name === e.target.value);
+                        setLabForm(f => ({ ...f, test_name: e.target.value, test_category: chosen?.category || "" }));
+                      }} required>
+                        <option value="">Select test...</option>
+                        {labCatalog.map(c => <option key={c.id} value={c.test_name}>{c.test_name}{c.category ? ` (${c.category})` : ""}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Category"><input style={inputStyle} value={labForm.test_category} readOnly placeholder="Auto-filled from test" /></Field>
                     <div style={{ gridColumn: "1 / -1" }}><Field label="Notes for lab"><input style={inputStyle} value={labForm.notes} onChange={e => setLabForm(f => ({ ...f, notes: e.target.value }))} /></Field></div>
                     <div style={{ gridColumn: "1 / -1" }}><Button type="submit" variant="secondary" disabled={loading}>Order test</Button></div>
                   </form>
@@ -319,7 +329,19 @@ export default function DoctorPage() {
                       </select>
                     </Field>
                     <Field label="Dosage" required><input style={inputStyle} value={prescriptionForm.dosage} onChange={e => setPrescriptionForm(f => ({ ...f, dosage: e.target.value }))} placeholder="e.g. 500mg" required /></Field>
-                    <Field label="Frequency" required><input style={inputStyle} value={prescriptionForm.frequency} onChange={e => setPrescriptionForm(f => ({ ...f, frequency: e.target.value }))} placeholder="e.g. 3 times a day" required /></Field>
+                    <Field label="Frequency" required>
+                      <select style={inputStyle} value={prescriptionForm.frequency} onChange={e => setPrescriptionForm(f => ({ ...f, frequency: e.target.value }))} required>
+                        <option value="">Select frequency...</option>
+                        <option value="Once daily">Once daily</option>
+                        <option value="Twice daily">Twice daily</option>
+                        <option value="Three times daily">Three times daily</option>
+                        <option value="Four times daily">Four times daily</option>
+                        <option value="Every 6 hours">Every 6 hours</option>
+                        <option value="Every 8 hours">Every 8 hours</option>
+                        <option value="Every 12 hours">Every 12 hours</option>
+                        <option value="As needed">As needed</option>
+                      </select>
+                    </Field>
                     <Field label="Duration" required><input style={inputStyle} value={prescriptionForm.duration} onChange={e => setPrescriptionForm(f => ({ ...f, duration: e.target.value }))} placeholder="e.g. 7 days" required /></Field>
                     <div style={{ gridColumn: "1 / -1" }}><Field label="Instructions"><input style={inputStyle} value={prescriptionForm.instructions} onChange={e => setPrescriptionForm(f => ({ ...f, instructions: e.target.value }))} /></Field></div>
                     <div style={{ gridColumn: "1 / -1" }}><Button type="submit" variant="secondary" disabled={loading}>Add prescription</Button></div>

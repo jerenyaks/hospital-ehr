@@ -45,6 +45,7 @@ export const usersApi = {
 };
 
 export const labApi = {
+  getCatalog: async () => { const { data } = await api.get("/lab/catalog"); return data; },
   orderTest: async (payload) => { const { data } = await api.post("/lab/tests", payload); return data; },
   getPendingTests: async () => { const { data } = await api.get("/lab/tests/pending"); return data; },
   getVisitTests: async (visitId) => { const { data } = await api.get(`/lab/tests/visit/${visitId}`); return data; },
