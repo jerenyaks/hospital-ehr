@@ -33,7 +33,9 @@ export const visitsApi = {
   addDiagnosis: async (visitId, diagnosis) => { const { data } = await api.post(`/visits/${visitId}/diagnoses`, diagnosis); return data; },
   addPrescription: async (visitId, prescription) => { const { data } = await api.post(`/visits/${visitId}/prescriptions`, prescription); return data; },
   getPatientHistory: async (patientId) => { const { data } = await api.get(`/visits/patient/${patientId}/history`); return data; },
-  admit: async (visitId, ward, bedNumber) => { const { data } = await api.patch(`/visits/${visitId}/admit`, { ward, bed_number: bedNumber }); return data; },
+  classifyInpatient: async (visitId) => { const { data } = await api.patch(`/visits/${visitId}/classify-inpatient`); return data; },
+  assignBed: async (visitId, ward, bedNumber) => { const { data } = await api.patch(`/visits/${visitId}/assign-bed`, { ward, bed_number: bedNumber }); return data; },
+  getAwaitingBed: async () => { const { data } = await api.get("/visits/inpatients/awaiting-bed"); return data; },
   discharge: async (visitId, notes) => { const { data } = await api.patch(`/visits/${visitId}/discharge`, { discharge_notes: notes }); return data; },
   getActiveInpatients: async () => { const { data } = await api.get("/visits/inpatients/active"); return data; },
 };

@@ -73,6 +73,19 @@ def list_active_inpatients(
     ).all()
 
 
+@router.get("/inpatients/awaiting-bed", response_model=List[VisitOut])
+def list_awaiting_bed_assignment(
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    """Patients the doctor has classified as inpatient, but no ward/bed assigned yet."""
+    return db.query(Visit).filter(
+        Visit.visit_type == VisitType.inpatient,
+        Visit.status != VisitStatus.admitted,
+        Visit.ward.is_(None),
+    ).all()
+
+
 @router.get("/patient/{patient_id}/history", response_model=List[VisitOut])
 def get_patient_visit_history(
     patient_id: int,
@@ -128,17 +141,35 @@ def update_visit_status(
     return visit
 
 
-@router.patch("/{visit_id}/admit", response_model=VisitOut)
-def admit_patient(
+@router.patch("/{visit_id}/classify-inpatient", response_model=VisitOut)
+def classify_inpatient(
     visit_id: int,
-    payload: dict,
     db: Session = Depends(get_db),
     doctor: User = Depends(require_role(UserRole.doctor, UserRole.admin)),
 ):
+    """Doctor marks a patient as needing admission. Ward/bed is assigned later by a nurse."""
     visit = db.query(Visit).filter(Visit.id == visit_id).first()
     if not visit:
         raise HTTPException(status_code=404, detail="Visit not found")
     visit.visit_type = VisitType.inpatient
+    db.commit()
+    db.refresh(visit)
+    return visit
+
+
+@router.patch("/{visit_id}/assign-bed", response_model=VisitOut)
+def assign_bed(
+    visit_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    nurse: User = Depends(require_role(UserRole.nurse, UserRole.admin)),
+):
+    """Nurse assigns ward/bed to a patient already classified as inpatient by a doctor."""
+    visit = db.query(Visit).filter(Visit.id == visit_id).first()
+    if not visit:
+        raise HTTPException(status_code=404, detail="Visit not found")
+    if visit.visit_type != VisitType.inpatient:
+        raise HTTPException(status_code=400, detail="This patient has not been classified as inpatient yet.")
     visit.ward = payload.get("ward")
     visit.bed_number = payload.get("bed_number")
     visit.status = VisitStatus.admitted

@@ -123,10 +123,10 @@ export default function DoctorPage() {
     finally { setLoading(false); }
   };
 
-  const handleAdmit = async (e) => {
-    e.preventDefault(); setError(""); setLoading(true);
-    try { await visitsApi.admit(selectedVisit.id, admitWard, admitBed); setSuccess("Patient admitted to ward."); loadQueue(); await refresh(); }
-    catch (err) { setError(err.response?.data?.detail || "Could not admit patient."); }
+  const handleClassifyInpatient = async () => {
+    setError(""); setLoading(true);
+    try { await visitsApi.classifyInpatient(selectedVisit.id); setSuccess("Patient classified as inpatient. Awaiting bed assignment by a nurse."); loadQueue(); await refresh(); }
+    catch (err) { setError(err.response?.data?.detail || "Could not classify patient as inpatient."); }
     finally { setLoading(false); }
   };
 
@@ -348,14 +348,18 @@ export default function DoctorPage() {
                   </form>
                 </Card>
 
-                {visitDetail?.status === "with_doctor" && (
+                {visitDetail?.status === "with_doctor" && visitDetail?.visit_type !== "inpatient" && (
                   <Card>
-                    <h4 style={{ marginBottom: "var(--space-3)" }}>Admit as inpatient</h4>
-                    <form onSubmit={handleAdmit} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-3)" }}>
-                      <Field label="Ward" required><input style={inputStyle} value={admitWard} onChange={e => setAdmitWard(e.target.value)} placeholder="e.g. Medical Ward A" required /></Field>
-                      <Field label="Bed number" required><input style={inputStyle} value={admitBed} onChange={e => setAdmitBed(e.target.value)} placeholder="e.g. Bed 12" required /></Field>
-                      <div style={{ gridColumn: "1 / -1" }}><Button type="submit" variant="secondary" disabled={loading}>Admit patient</Button></div>
-                    </form>
+                    <h4 style={{ marginBottom: "var(--space-3)" }}>Inpatient classification</h4>
+                    <p style={{ fontSize: 13, color: "var(--color-text-muted)", marginBottom: "var(--space-3)" }}>
+                      Classifying this patient as inpatient will send them to a nurse for ward and bed assignment.
+                    </p>
+                    <Button variant="secondary" disabled={loading} onClick={handleClassifyInpatient}>Classify as inpatient</Button>
+                  </Card>
+                )}
+                {visitDetail?.visit_type === "inpatient" && visitDetail?.status !== "admitted" && (
+                  <Card>
+                    <p style={{ fontSize: 13, color: "var(--color-warning)", fontWeight: 600 }}>Awaiting bed assignment by a nurse.</p>
                   </Card>
                 )}
 
