@@ -15,6 +15,7 @@ from app.core.security import hash_password
 from app.models.user import User, UserRole
 from app.models.pharmacy import Medicine
 from app.models.lab_catalog import LabTestCatalog
+from app.models.inpatient_record import InpatientDailyRecord
 from app.models.patient import Patient, Gender, BloodGroup
 from app.models.visit import Visit, VisitStatus, VisitType
 from app.models.vitals import Vitals

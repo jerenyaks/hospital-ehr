@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import TopBar from "../components/TopBar";
 import { Card, Button, Field, inputStyle, ErrorBanner, SuccessBanner } from "../components/ui";
 import StatusPill from "../components/StatusPill";
-import { visitsApi, patientsApi, labApi, pharmacyApi } from "../api/endpoints";
+import { visitsApi, patientsApi, labApi, pharmacyApi, inpatientRecordsApi } from "../api/endpoints";
 
 const BLANK_DIAGNOSIS = { condition: "", icd10_code: "", notes: "" };
 const BLANK_PRESCRIPTION = { medication_name: "", dosage: "", frequency: "", duration: "", instructions: "" };
@@ -34,6 +34,8 @@ export default function DoctorPage() {
   const [medicines, setMedicines] = useState([]);
   const [pharmacyLoading, setPharmacyLoading] = useState(false);
   const [labCatalog, setLabCatalog] = useState([]);
+  const [dailyRecords, setDailyRecords] = useState([]);
+  const [dailyForm, setDailyForm] = useState({ temperature_celsius: "", systolic_bp: "", diastolic_bp: "", pulse_bpm: "", condition_notes: "", medication_given: "" });
 
   const loadQueue = async () => {
     try {
@@ -92,6 +94,11 @@ export default function DoctorPage() {
       setVisitDetail(detail); setPatient(patientData);
       setHistory(historyData.filter(h => h.id !== visit.id)); setLabTests(tests);
       await loadDispensingStatus(detail.prescriptions);
+      if (detail.visit_type === "inpatient") {
+        inpatientRecordsApi.getForVisit(visit.id).then(setDailyRecords).catch(() => setDailyRecords([]));
+      } else {
+        setDailyRecords([]);
+      }
     } catch { setError("Could not load patient details."); }
   };
 
@@ -120,6 +127,27 @@ export default function DoctorPage() {
     e.preventDefault(); setError(""); setLoading(true);
     try { await labApi.orderTest({ visit_id: selectedVisit.id, ...labForm }); setLabForm(BLANK_LAB); await refresh(); setSuccess("Lab test ordered."); }
     catch (err) { setError(err.response?.data?.detail || "Could not order lab test."); }
+    finally { setLoading(false); }
+  };
+
+  const handleAddDailyRecord = async (e) => {
+    e.preventDefault(); setError(""); setLoading(true);
+    try {
+      const payload = {
+        visit_id: selectedVisit.id,
+        temperature_celsius: dailyForm.temperature_celsius === "" ? null : Number(dailyForm.temperature_celsius),
+        systolic_bp: dailyForm.systolic_bp === "" ? null : Number(dailyForm.systolic_bp),
+        diastolic_bp: dailyForm.diastolic_bp === "" ? null : Number(dailyForm.diastolic_bp),
+        pulse_bpm: dailyForm.pulse_bpm === "" ? null : Number(dailyForm.pulse_bpm),
+        condition_notes: dailyForm.condition_notes || null,
+        medication_given: dailyForm.medication_given || null,
+      };
+      await inpatientRecordsApi.add(payload);
+      setDailyForm({ temperature_celsius: "", systolic_bp: "", diastolic_bp: "", pulse_bpm: "", condition_notes: "", medication_given: "" });
+      const records = await inpatientRecordsApi.getForVisit(selectedVisit.id);
+      setDailyRecords(records);
+      setSuccess("Daily record added.");
+    } catch (err) { setError(err.response?.data?.detail || "Could not add daily record."); }
     finally { setLoading(false); }
   };
 
@@ -248,6 +276,35 @@ export default function DoctorPage() {
                     </div>
                   )}
                 </Card>
+
+                {visitDetail?.visit_type === "inpatient" && visitDetail?.status === "admitted" && (
+                  <Card>
+                    <h4 style={{ marginBottom: "var(--space-3)" }}>Daily care log</h4>
+                    {dailyRecords.length > 0 && (
+                      <div style={{ marginBottom: "var(--space-3)", display: "flex", flexDirection: "column", gap: 6, maxHeight: 240, overflowY: "auto" }}>
+                        {dailyRecords.map(r => (
+                          <div key={r.id} style={{ fontSize: 13, padding: "8px 12px", background: "var(--color-bg)", borderRadius: "var(--radius-sm)" }}>
+                            <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginBottom: 4 }}>{new Date(r.recorded_at).toLocaleString()}</div>
+                            {(r.temperature_celsius || r.systolic_bp || r.pulse_bpm) && (
+                              <div>Temp: {r.temperature_celsius ?? "—"}°C · BP: {r.systolic_bp ?? "—"}/{r.diastolic_bp ?? "—"} · Pulse: {r.pulse_bpm ?? "—"} bpm</div>
+                            )}
+                            {r.condition_notes && <div style={{ marginTop: 2 }}>Notes: {r.condition_notes}</div>}
+                            {r.medication_given && <div style={{ marginTop: 2 }}>Medication given: {r.medication_given}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <form onSubmit={handleAddDailyRecord} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "var(--space-3)" }}>
+                      <Field label="Temp (°C)"><input type="number" step="0.1" style={inputStyle} value={dailyForm.temperature_celsius} onChange={e => setDailyForm(f => ({ ...f, temperature_celsius: e.target.value }))} /></Field>
+                      <Field label="Systolic BP"><input type="number" style={inputStyle} value={dailyForm.systolic_bp} onChange={e => setDailyForm(f => ({ ...f, systolic_bp: e.target.value }))} /></Field>
+                      <Field label="Diastolic BP"><input type="number" style={inputStyle} value={dailyForm.diastolic_bp} onChange={e => setDailyForm(f => ({ ...f, diastolic_bp: e.target.value }))} /></Field>
+                      <Field label="Pulse (bpm)"><input type="number" style={inputStyle} value={dailyForm.pulse_bpm} onChange={e => setDailyForm(f => ({ ...f, pulse_bpm: e.target.value }))} /></Field>
+                      <div style={{ gridColumn: "1 / -1" }}><Field label="Condition notes"><textarea style={{ ...inputStyle, minHeight: 50, resize: "vertical" }} value={dailyForm.condition_notes} onChange={e => setDailyForm(f => ({ ...f, condition_notes: e.target.value }))} placeholder="How is the patient doing today?" /></Field></div>
+                      <div style={{ gridColumn: "1 / -1" }}><Field label="Medication given today"><input style={inputStyle} value={dailyForm.medication_given} onChange={e => setDailyForm(f => ({ ...f, medication_given: e.target.value }))} /></Field></div>
+                      <div style={{ gridColumn: "1 / -1" }}><Button type="submit" variant="secondary" disabled={loading}>Add entry</Button></div>
+                    </form>
+                  </Card>
+                )}
 
                 <Card>
                   <h4 style={{ marginBottom: "var(--space-3)" }}>Diagnoses</h4>

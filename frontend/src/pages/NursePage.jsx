@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import TopBar from "../components/TopBar";
 import { Card, Button, Field, inputStyle, ErrorBanner, SuccessBanner } from "../components/ui";
 import StatusPill from "../components/StatusPill";
-import { visitsApi, patientsApi } from "../api/endpoints";
+import { visitsApi, patientsApi, inpatientRecordsApi } from "../api/endpoints";
 
 const BLANK_VITALS = {
   temperature_celsius: "",
@@ -28,6 +28,11 @@ export default function NursePage() {
   const [awaitingBed, setAwaitingBed] = useState([]);
   const [bedForms, setBedForms] = useState({});
   const [bedLoadingId, setBedLoadingId] = useState(null);
+
+  const [activeInpatients, setActiveInpatients] = useState([]);
+  const [selectedInpatient, setSelectedInpatient] = useState(null);
+  const [dailyRecords, setDailyRecords] = useState([]);
+  const [dailyForm, setDailyForm] = useState({ temperature_celsius: "", systolic_bp: "", diastolic_bp: "", pulse_bpm: "", condition_notes: "", medication_given: "" });
 
   const loadQueue = async () => {
     try {
@@ -82,7 +87,52 @@ export default function NursePage() {
 
   useEffect(() => {
     if (pageMode === "beds") loadAwaitingBed();
+    if (pageMode === "care") loadActiveInpatients();
   }, [pageMode]);
+
+  const loadActiveInpatients = async () => {
+    try {
+      const visits = await visitsApi.getActiveInpatients();
+      setActiveInpatients(visits);
+      const names = {};
+      for (const v of visits) {
+        if (!patientNames[v.patient_id]) {
+          try { const p = await patientsApi.get(v.patient_id); names[v.patient_id] = `${p.first_name} ${p.last_name}`; }
+          catch { names[v.patient_id] = `Patient #${v.patient_id}`; }
+        }
+      }
+      setPatientNames((prev) => ({ ...prev, ...names }));
+    } catch { setError("Couldn't load active inpatients."); }
+  };
+
+  const handleSelectInpatient = async (visit) => {
+    setSelectedInpatient(visit);
+    setDailyForm({ temperature_celsius: "", systolic_bp: "", diastolic_bp: "", pulse_bpm: "", condition_notes: "", medication_given: "" });
+    try { setDailyRecords(await inpatientRecordsApi.getForVisit(visit.id)); }
+    catch { setDailyRecords([]); }
+  };
+
+  const handleAddDailyRecord = async (e) => {
+    e.preventDefault();
+    if (!selectedInpatient) return;
+    setError(""); setSuccess(""); setLoading(true);
+    try {
+      const payload = {
+        visit_id: selectedInpatient.id,
+        temperature_celsius: dailyForm.temperature_celsius === "" ? null : Number(dailyForm.temperature_celsius),
+        systolic_bp: dailyForm.systolic_bp === "" ? null : Number(dailyForm.systolic_bp),
+        diastolic_bp: dailyForm.diastolic_bp === "" ? null : Number(dailyForm.diastolic_bp),
+        pulse_bpm: dailyForm.pulse_bpm === "" ? null : Number(dailyForm.pulse_bpm),
+        condition_notes: dailyForm.condition_notes || null,
+        medication_given: dailyForm.medication_given || null,
+      };
+      await inpatientRecordsApi.add(payload);
+      setDailyForm({ temperature_celsius: "", systolic_bp: "", diastolic_bp: "", pulse_bpm: "", condition_notes: "", medication_given: "" });
+      setDailyRecords(await inpatientRecordsApi.getForVisit(selectedInpatient.id));
+      setSuccess("Daily record added.");
+    } catch (err) { setError(err.response?.data?.detail || "Could not add daily record."); }
+    finally { setLoading(false); }
+  };
 
   const handleSelectVisit = (visit) => {
     setSelectedVisit(visit);
@@ -147,6 +197,7 @@ export default function NursePage() {
           <ModeBtn active={pageMode === "beds"} onClick={() => setPageMode("beds")}>
             Bed Assignment {awaitingBed.length > 0 ? `(${awaitingBed.length})` : ""}
           </ModeBtn>
+          <ModeBtn active={pageMode === "care"} onClick={() => setPageMode("care")}>Inpatient Care</ModeBtn>
         </div>
 
         {error && <div style={{ marginBottom: "var(--space-4)" }}><ErrorBanner message={error} /></div>}
@@ -183,6 +234,53 @@ export default function NursePage() {
               })}
             </div>
           </Card>
+        ) : pageMode === "care" ? (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: "var(--space-5)" }}>
+            <Card>
+              <h3 style={{ marginBottom: "var(--space-4)" }}>Active inpatients</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {activeInpatients.length === 0 && <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>No active inpatients right now.</p>}
+                {activeInpatients.map(v => (
+                  <button key={v.id} onClick={() => handleSelectInpatient(v)} style={{ textAlign: "left", padding: "12px 14px", borderRadius: "var(--radius-sm)", border: selectedInpatient?.id === v.id ? "2px solid var(--color-primary)" : "1px solid var(--color-border)", background: selectedInpatient?.id === v.id ? "var(--color-primary-light)" : "var(--color-surface)", cursor: "pointer" }}>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{patientNames[v.patient_id] || `Patient #${v.patient_id}`}</div>
+                    <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 2 }}>{v.ward} · {v.bed_number}</div>
+                  </button>
+                ))}
+              </div>
+            </Card>
+            <Card>
+              <h3 style={{ marginBottom: "var(--space-4)" }}>Daily care log</h3>
+              {!selectedInpatient ? (
+                <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>Select an inpatient to view or add a daily record.</p>
+              ) : (
+                <>
+                  {dailyRecords.length > 0 && (
+                    <div style={{ marginBottom: "var(--space-3)", display: "flex", flexDirection: "column", gap: 6, maxHeight: 260, overflowY: "auto" }}>
+                      {dailyRecords.map(r => (
+                        <div key={r.id} style={{ fontSize: 13, padding: "8px 12px", background: "var(--color-bg)", borderRadius: "var(--radius-sm)" }}>
+                          <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginBottom: 4 }}>{new Date(r.recorded_at).toLocaleString()}</div>
+                          {(r.temperature_celsius || r.systolic_bp || r.pulse_bpm) && (
+                            <div>Temp: {r.temperature_celsius ?? "—"}°C · BP: {r.systolic_bp ?? "—"}/{r.diastolic_bp ?? "—"} · Pulse: {r.pulse_bpm ?? "—"} bpm</div>
+                          )}
+                          {r.condition_notes && <div style={{ marginTop: 2 }}>Notes: {r.condition_notes}</div>}
+                          {r.medication_given && <div style={{ marginTop: 2 }}>Medication given: {r.medication_given}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <form onSubmit={handleAddDailyRecord} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "var(--space-3)" }}>
+                    <Field label="Temp (°C)"><input type="number" step="0.1" style={inputStyle} value={dailyForm.temperature_celsius} onChange={e => setDailyForm(f => ({ ...f, temperature_celsius: e.target.value }))} /></Field>
+                    <Field label="Systolic BP"><input type="number" style={inputStyle} value={dailyForm.systolic_bp} onChange={e => setDailyForm(f => ({ ...f, systolic_bp: e.target.value }))} /></Field>
+                    <Field label="Diastolic BP"><input type="number" style={inputStyle} value={dailyForm.diastolic_bp} onChange={e => setDailyForm(f => ({ ...f, diastolic_bp: e.target.value }))} /></Field>
+                    <Field label="Pulse (bpm)"><input type="number" style={inputStyle} value={dailyForm.pulse_bpm} onChange={e => setDailyForm(f => ({ ...f, pulse_bpm: e.target.value }))} /></Field>
+                    <div style={{ gridColumn: "1 / -1" }}><Field label="Condition notes"><textarea style={{ ...inputStyle, minHeight: 50, resize: "vertical" }} value={dailyForm.condition_notes} onChange={e => setDailyForm(f => ({ ...f, condition_notes: e.target.value }))} placeholder="How is the patient doing today?" /></Field></div>
+                    <div style={{ gridColumn: "1 / -1" }}><Field label="Medication given today"><input style={inputStyle} value={dailyForm.medication_given} onChange={e => setDailyForm(f => ({ ...f, medication_given: e.target.value }))} /></Field></div>
+                    <div style={{ gridColumn: "1 / -1" }}><Button type="submit" disabled={loading}>{loading ? "Saving..." : "Add entry"}</Button></div>
+                  </form>
+                </>
+              )}
+            </Card>
+          </div>
         ) : (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: "var(--space-5)" }}>
           <Card>
