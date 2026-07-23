@@ -4,7 +4,7 @@ from app.core.config import settings
 from app.db.session import Base, engine
 import app.models  # noqa
 from app.routers import auth, users, patients, visits
-from app.routers import pharmacy, lab, billing, reports, enhancements, inpatient_records, store
+from app.routers import pharmacy, lab, billing, reports, enhancements, inpatient_records, store, suppliers
 Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title=settings.app_name,
@@ -30,6 +30,7 @@ app.include_router(reports.router)
 app.include_router(enhancements.router)
 app.include_router(inpatient_records.router)
 app.include_router(store.router)
+app.include_router(suppliers.router)
 @app.get("/")
 def root():
     return {"status": "ok", "service": settings.app_name, "version": "0.2.0"}

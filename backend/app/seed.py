@@ -17,6 +17,7 @@ from app.models.pharmacy import Medicine
 from app.models.lab_catalog import LabTestCatalog
 from app.models.inpatient_record import InpatientDailyRecord
 from app.models.store import StoreItem, StoreIssuance
+from app.models.suppliers import Supplier, SupplyOrder
 from sqlalchemy import text
 from app.models.patient import Patient, Gender, BloodGroup
 from app.models.visit import Visit, VisitStatus, VisitType
@@ -119,6 +120,18 @@ def seed():
                 continue
             db.add(StoreItem(name=name, category=category, unit=unit, quantity=qty, reorder_level=reorder, unit_price=price))
             print(f"Added store item: {name}")
+        db.commit()
+
+        sample_suppliers = [
+            ("MediPlus Kenya Ltd", "James Mwangi", "+254711223344", "sales@mediplus.co.ke", "PPB-CERT-00123", True, "Nairobi, Kenya"),
+            ("Pharma Direct Suppliers", "Grace Achieng", "+254722334455", "info@pharmadirect.co.ke", "PPB-CERT-00456", True, "Mombasa, Kenya"),
+            ("Unverified Meds Co.", "N/A", "+254700000000", None, None, False, None),
+        ]
+        for name, contact, phone, email, license_no, certified, address in sample_suppliers:
+            if db.query(Supplier).filter(Supplier.name == name).first():
+                continue
+            db.add(Supplier(name=name, contact_person=contact, phone=phone, email=email, license_number=license_no, is_certified=certified, address=address))
+            print(f"Added supplier: {name}")
         db.commit()
 
         existing_test_names = {t.test_name for t in db.query(LabTestCatalog).all()}
