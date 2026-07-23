@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import TopBar from "../components/TopBar";
 import { Card, Button, Field, inputStyle, ErrorBanner, SuccessBanner } from "../components/ui";
-import { usersApi, billingApi } from "../api/endpoints";
+import { usersApi, billingApi, storeApi } from "../api/endpoints";
 
 const BLANK_USER = { full_name: "", email: "", password: "", role: "receptionist" };
 
@@ -12,6 +12,7 @@ const ROLE_LABELS = {
   receptionist: "Receptionist",
   pharmacist: "Pharmacist",
   lab_technician: "Lab Technician",
+  store_keeper: "Store Keeper",
 };
 
 export default function AdminPage() {
@@ -25,6 +26,10 @@ export default function AdminPage() {
   const [reportData, setReportData] = useState(null);
   const [reportLoading, setReportLoading] = useState(false);
 
+  const [storeItems, setStoreItems] = useState([]);
+  const [storeLoading, setStoreLoading] = useState(false);
+  const [storeUpdateForms, setStoreUpdateForms] = useState({});
+
   const loadUsers = async () => {
     try { setUsers(await usersApi.list()); }
     catch { setError("Couldn't load staff list."); }
@@ -37,11 +42,33 @@ export default function AdminPage() {
     finally { setReportLoading(false); }
   };
 
+  const loadStore = async () => {
+    setStoreLoading(true);
+    try { setStoreItems(await storeApi.getItems()); }
+    catch { setError("Could not load store items."); }
+    finally { setStoreLoading(false); }
+  };
+
   useEffect(() => { const t = setTimeout(loadUsers, 0); return () => clearTimeout(t); }, []);
 
   useEffect(() => {
     if (pageMode === "reports") loadReports();
+    if (pageMode === "store") loadStore();
   }, [pageMode]);
+
+  const storeUpdateField = (itemId, value) => setStoreUpdateForms(f => ({ ...f, [itemId]: value }));
+
+  const handleStoreUpdate = async (item) => {
+    const val = storeUpdateForms[item.id];
+    if (val === undefined || val === "") return;
+    setError(""); setSuccess("");
+    try {
+      await storeApi.updateItem(item.id, { quantity: Number(val) });
+      setSuccess(`${item.name} stock updated.`);
+      setStoreUpdateForms(f => { const n = { ...f }; delete n[item.id]; return n; });
+      loadStore();
+    } catch (err) { setError(err.response?.data?.detail || "Could not update item."); }
+  };
 
   const handleCreate = async (e) => {
     e.preventDefault(); setError(""); setSuccess(""); setLoading(true);
@@ -67,9 +94,35 @@ export default function AdminPage() {
         <div style={{ display: "flex", gap: 8, marginBottom: "var(--space-4)" }}>
           <ModeBtn active={pageMode === "staff"} onClick={() => setPageMode("staff")}>Staff Administration</ModeBtn>
           <ModeBtn active={pageMode === "reports"} onClick={() => setPageMode("reports")}>Reports</ModeBtn>
+          <ModeBtn active={pageMode === "store"} onClick={() => setPageMode("store")}>Store</ModeBtn>
         </div>
 
-        {pageMode === "reports" ? (
+        {pageMode === "store" ? (
+          <Card>
+            <h3 style={{ marginBottom: "var(--space-4)" }}>Store inventory (food & patient supplies)</h3>
+            {storeLoading && <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>Loading...</p>}
+            {!storeLoading && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1fr auto", gap: 8, padding: "8px 12px", fontSize: 12, fontWeight: 600, color: "var(--color-text-muted)", borderBottom: "1px solid var(--color-border)" }}>
+                  <span>Item</span><span>Category</span><span>Amount</span><span>Unit</span><span>Price (KES)</span><span>Update</span>
+                </div>
+                {storeItems.map(i => (
+                  <div key={i.id} style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1fr auto", gap: 8, padding: "10px 12px", fontSize: 13, alignItems: "center", borderRadius: "var(--radius-sm)", background: i.quantity <= i.reorder_level ? "var(--color-warning-light)" : "transparent" }}>
+                    <span style={{ fontWeight: 500 }}>{i.name}</span>
+                    <span style={{ color: "var(--color-text-muted)" }}>{i.category || "—"}</span>
+                    <span style={{ color: i.quantity <= i.reorder_level ? "var(--color-warning)" : "var(--color-text)" }}>{i.quantity}</span>
+                    <span>{i.unit}</span>
+                    <span>{i.unit_price.toFixed(2)}</span>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <input type="number" style={{ ...inputStyle, width: 70, padding: "6px 8px" }} placeholder="New qty" value={storeUpdateForms[i.id] ?? ""} onChange={e => storeUpdateField(i.id, e.target.value)} />
+                      <Button onClick={() => handleStoreUpdate(i)} style={{ padding: "6px 10px", fontSize: 12 }}>Update</Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        ) : pageMode === "reports" ? (
           <Card>
             <h3 style={{ marginBottom: "var(--space-4)" }}>Hospital summary</h3>
             {reportLoading && <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>Loading...</p>}
@@ -103,6 +156,7 @@ export default function AdminPage() {
                   <option value="doctor">Doctor</option>
                   <option value="pharmacist">Pharmacist</option>
                   <option value="lab_technician">Lab Technician</option>
+                  <option value="store_keeper">Store Keeper</option>
                   <option value="admin">Administrator</option>
                 </select>
               </Field>

@@ -16,6 +16,8 @@ from app.models.user import User, UserRole
 from app.models.pharmacy import Medicine
 from app.models.lab_catalog import LabTestCatalog
 from app.models.inpatient_record import InpatientDailyRecord
+from app.models.store import StoreItem
+from sqlalchemy import text
 from app.models.patient import Patient, Gender, BloodGroup
 from app.models.visit import Visit, VisitStatus, VisitType
 from app.models.vitals import Vitals
@@ -49,6 +51,15 @@ COMMON_LAB_TESTS = [
 def seed():
     db = SessionLocal()
     try:
+        # Postgres enum types don't auto-update when a Python enum gains a new
+        # value. Add it here, safely, if it isn't already present.
+        try:
+            db.execute(text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'store_keeper'"))
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            print(f"Note: could not alter userrole enum (may not be Postgres, or already up to date): {e}")
+
         demo_users = [
             ("Admin User", "admin@hospital.ke", "admin123", UserRole.admin),
             ("Dr. Wanjiru Kamau", "doctor@hospital.ke", "doctor123", UserRole.doctor),
@@ -56,6 +67,7 @@ def seed():
             ("Reception Mwangi", "reception@hospital.ke", "reception123", UserRole.receptionist),
             ("Pharmacist Njoki Waweru", "pharmacy@hospital.ke", "pharmacy123", UserRole.pharmacist),
             ("Lab Tech Otieno Odhiambo", "lab@hospital.ke", "lab123", UserRole.lab_technician),
+            ("Store Keeper Kiptoo", "store@hospital.ke", "store123", UserRole.store_keeper),
         ]
         user_map = {}
         for full_name, email, password, role in demo_users:
@@ -86,6 +98,27 @@ def seed():
                 continue
             db.add(Medicine(name=name, category=category, unit=unit, stock_quantity=stock, reorder_level=reorder, unit_price=price))
             print(f"Added medicine: {name}")
+        db.commit()
+
+        sample_store_items = [
+            ("Rice", "Food", "kg", 100, 20, 150.0),
+            ("Maize Flour (Unga)", "Food", "kg", 80, 15, 120.0),
+            ("Cooking Oil", "Food", "litres", 40, 10, 350.0),
+            ("Beans", "Food", "kg", 60, 15, 180.0),
+            ("Sugar", "Food", "kg", 50, 10, 160.0),
+            ("Milk", "Food", "litres", 30, 10, 70.0),
+            ("Bed Sheets", "Bedding", "pieces", 60, 10, 800.0),
+            ("Blankets", "Bedding", "pieces", 40, 8, 1200.0),
+            ("Patient Gowns", "Patient supplies", "pieces", 50, 10, 500.0),
+            ("Detergent", "Cleaning", "kg", 25, 5, 200.0),
+            ("Disinfectant", "Cleaning", "litres", 30, 8, 350.0),
+            ("Toilet Paper", "Patient supplies", "rolls", 100, 20, 45.0),
+        ]
+        for name, category, unit, qty, reorder, price in sample_store_items:
+            if db.query(StoreItem).filter(StoreItem.name == name).first():
+                continue
+            db.add(StoreItem(name=name, category=category, unit=unit, quantity=qty, reorder_level=reorder, unit_price=price))
+            print(f"Added store item: {name}")
         db.commit()
 
         existing_test_names = {t.test_name for t in db.query(LabTestCatalog).all()}

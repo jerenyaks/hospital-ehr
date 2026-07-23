@@ -8,7 +8,7 @@ import DoctorPage from "./pages/DoctorPage";
 import AdminPage from "./pages/AdminPage";
 import PharmacyPage from "./pages/PharmacyPage";
 import LabPage from "./pages/LabPage";
-
+import StorePage from "./pages/StorePage";
 const ROLE_HOME = {
   admin: "/admin",
   doctor: "/doctor",
@@ -16,14 +16,13 @@ const ROLE_HOME = {
   receptionist: "/reception",
   pharmacist: "/pharmacy",
   lab_technician: "/lab",
+  store_keeper: "/store",
 };
-
 function HomeRedirect() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
   return <Navigate to={ROLE_HOME[user.role] || "/login"} replace />;
 }
-
 function AppRoutes() {
   return (
     <Routes>
@@ -34,12 +33,12 @@ function AppRoutes() {
       <Route path="/doctor" element={<ProtectedRoute allowedRoles={["doctor", "admin"]}><DoctorPage /></ProtectedRoute>} />
       <Route path="/pharmacy" element={<ProtectedRoute allowedRoles={["pharmacist", "admin"]}><PharmacyPage /></ProtectedRoute>} />
       <Route path="/lab" element={<ProtectedRoute allowedRoles={["lab_technician", "admin"]}><LabPage /></ProtectedRoute>} />
+      <Route path="/store" element={<ProtectedRoute allowedRoles={["store_keeper", "admin"]}><StorePage /></ProtectedRoute>} />
       <Route path="/admin" element={<ProtectedRoute allowedRoles={["admin"]}><AdminPage /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
-
 export default function App() {
   return (
     <AuthProvider>

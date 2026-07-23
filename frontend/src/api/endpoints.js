@@ -64,6 +64,12 @@ export const pharmacyApi = {
   getPendingPrescriptions: async () => { const { data } = await api.get("/pharmacy/prescriptions/pending"); return data; },
 };
 
+export const storeApi = {
+  getItems: async () => { const { data } = await api.get("/store/items"); return data; },
+  addItem: async (payload) => { const { data } = await api.post("/store/items", payload); return data; },
+  updateItem: async (id, payload) => { const { data } = await api.patch(`/store/items/${id}`, payload); return data; },
+  getLowStock: async () => { const { data } = await api.get("/store/items/low-stock"); return data; },
+};
 export const inpatientRecordsApi = {
   add: async (payload) => { const { data } = await api.post("/inpatient-records", payload); return data; },
   getForVisit: async (visitId) => { const { data } = await api.get(`/inpatient-records/visit/${visitId}`); return data; },
