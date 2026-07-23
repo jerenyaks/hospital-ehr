@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from app.core.deps import require_role, get_current_user
 from app.db.session import get_db
 from app.models.user import User, UserRole
-from app.models.store import StoreItem
+from app.models.store import StoreItem, StoreIssuance
 
 router = APIRouter(prefix="/store", tags=["store"])
 
@@ -42,6 +42,24 @@ class StoreItemOut(BaseModel):
     unit_price: float
     notes: Optional[str]
     updated_at: datetime
+    class Config: from_attributes = True
+
+class StoreIssuanceCreate(BaseModel):
+    store_item_id: int
+    visit_id: Optional[int] = None
+    ward: Optional[str] = None
+    quantity_issued: int
+    notes: Optional[str] = None
+
+class StoreIssuanceOut(BaseModel):
+    id: int
+    store_item_id: int
+    visit_id: Optional[int]
+    ward: Optional[str]
+    quantity_issued: int
+    issued_by_id: int
+    notes: Optional[str]
+    issued_at: datetime
     class Config: from_attributes = True
 
 
@@ -89,3 +107,50 @@ def low_stock_items(
     _user: User = Depends(get_current_user),
 ):
     return db.query(StoreItem).filter(StoreItem.quantity <= StoreItem.reorder_level).all()
+
+
+@router.post("/issue", response_model=StoreIssuanceOut, status_code=201)
+def issue_item(
+    payload: StoreIssuanceCreate,
+    db: Session = Depends(get_db),
+    staff: User = Depends(require_role(UserRole.store_keeper, UserRole.admin)),
+):
+    if not payload.visit_id and not payload.ward:
+        raise HTTPException(status_code=400, detail="Provide either a patient (visit) or a ward to issue to.")
+
+    item = db.query(StoreItem).filter(StoreItem.id == payload.store_item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Store item not found")
+    if item.quantity < payload.quantity_issued:
+        raise HTTPException(status_code=400, detail=f"Insufficient stock. Available: {item.quantity} {item.unit}")
+
+    issuance = StoreIssuance(
+        store_item_id=payload.store_item_id,
+        visit_id=payload.visit_id,
+        ward=payload.ward,
+        quantity_issued=payload.quantity_issued,
+        issued_by_id=staff.id,
+        notes=payload.notes,
+    )
+    db.add(issuance)
+    item.quantity -= payload.quantity_issued
+    db.commit()
+    db.refresh(issuance)
+    return issuance
+
+
+@router.get("/issuances", response_model=List[StoreIssuanceOut])
+def list_all_issuances(
+    db: Session = Depends(get_db),
+    _staff: User = Depends(require_role(UserRole.store_keeper, UserRole.admin)),
+):
+    return db.query(StoreIssuance).order_by(StoreIssuance.issued_at.desc()).all()
+
+
+@router.get("/issuances/visit/{visit_id}", response_model=List[StoreIssuanceOut])
+def get_issuances_for_visit(
+    visit_id: int,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    return db.query(StoreIssuance).filter(StoreIssuance.visit_id == visit_id).order_by(StoreIssuance.issued_at.desc()).all()

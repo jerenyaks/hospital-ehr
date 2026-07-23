@@ -15,6 +15,7 @@ from app.models.user import User, UserRole
 from app.models.billing import Bill, PharmacyBill, LabBill
 from app.models.visit import Visit, VisitType
 from app.models.prescription import Prescription
+from app.models.store import StoreItem, StoreIssuance
 from app.models.audit import AuditLog
 
 # Single router definition
@@ -125,6 +126,15 @@ def reports_summary(
     paid_revenue = db.query(func.sum(Bill.total_amount)).filter(Bill.is_paid == True).scalar() or 0
     unpaid_revenue = total_revenue - paid_revenue
 
+    total_store_items = db.query(StoreItem).count()
+    store_low_stock_count = db.query(StoreItem).filter(StoreItem.quantity <= StoreItem.reorder_level).count()
+    store_issuances_count = db.query(StoreIssuance).count()
+    store_issuance_value = 0.0
+    for issuance in db.query(StoreIssuance).all():
+        item = db.query(StoreItem).filter(StoreItem.id == issuance.store_item_id).first()
+        if item:
+            store_issuance_value += item.unit_price * issuance.quantity_issued
+
     return {
         "total_visits": total_visits,
         "outpatient_count": outpatient_count,
@@ -136,6 +146,10 @@ def reports_summary(
         "total_revenue": round(total_revenue, 2),
         "paid_revenue": round(paid_revenue, 2),
         "unpaid_revenue": round(unpaid_revenue, 2),
+        "total_store_items": total_store_items,
+        "store_low_stock_count": store_low_stock_count,
+        "store_issuances_count": store_issuances_count,
+        "store_issuance_value": round(store_issuance_value, 2),
     }
 
 # ------------------ New Endpoints ------------------

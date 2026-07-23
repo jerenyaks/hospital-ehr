@@ -16,7 +16,7 @@ from app.models.user import User, UserRole
 from app.models.pharmacy import Medicine
 from app.models.lab_catalog import LabTestCatalog
 from app.models.inpatient_record import InpatientDailyRecord
-from app.models.store import StoreItem
+from app.models.store import StoreItem, StoreIssuance
 from sqlalchemy import text
 from app.models.patient import Patient, Gender, BloodGroup
 from app.models.visit import Visit, VisitStatus, VisitType

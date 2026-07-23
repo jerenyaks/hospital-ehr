@@ -138,6 +138,10 @@ export default function AdminPage() {
                 <ReportStat label="Total revenue" value={`KES ${reportData.total_revenue}`} />
                 <ReportStat label="Paid" value={`KES ${reportData.paid_revenue}`} />
                 <ReportStat label="Unpaid" value={`KES ${reportData.unpaid_revenue}`} />
+                <ReportStat label="Store items" value={reportData.total_store_items} />
+                <ReportStat label="Store low stock" value={reportData.store_low_stock_count} />
+                <ReportStat label="Store issuances" value={reportData.store_issuances_count} />
+                <ReportStat label="Store value issued" value={`KES ${reportData.store_issuance_value}`} />
               </div>
             )}
           </Card>

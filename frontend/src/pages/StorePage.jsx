@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import TopBar from "../components/TopBar";
 import { Card, Button, Field, inputStyle, ErrorBanner, SuccessBanner } from "../components/ui";
-import { storeApi } from "../api/endpoints";
+import { storeApi, visitsApi, patientsApi } from "../api/endpoints";
 
 export default function StorePage() {
   const [items, setItems] = useState([]);
@@ -13,6 +13,10 @@ export default function StorePage() {
   const [newItem, setNewItem] = useState({ name: "", category: "Food", unit: "kg", quantity: 0, reorder_level: 10, unit_price: 0, notes: "" });
   const [updateForms, setUpdateForms] = useState({});
 
+  const [activeVisits, setActiveVisits] = useState([]);
+  const [patientNames, setPatientNames] = useState({});
+  const [issueForm, setIssueForm] = useState({ store_item_id: "", target_type: "patient", visit_id: "", ward: "", quantity_issued: "", notes: "" });
+
   const loadData = async () => {
     try {
       const [all, low] = await Promise.all([storeApi.getItems(), storeApi.getLowStock()]);
@@ -21,6 +25,40 @@ export default function StorePage() {
   };
 
   useEffect(() => { const t = setTimeout(loadData, 0); return () => clearTimeout(t); }, []);
+
+  const loadActiveVisits = async () => {
+    try {
+      const [queue, inpatients] = await Promise.all([visitsApi.list(), visitsApi.getActiveInpatients()]);
+      const merged = [...queue, ...inpatients].filter((v, i, arr) => arr.findIndex(x => x.id === v.id) === i);
+      setActiveVisits(merged);
+      const names = {};
+      for (const v of merged) {
+        if (!patientNames[v.patient_id]) {
+          try { const p = await patientsApi.get(v.patient_id); names[v.patient_id] = `${p.first_name} ${p.last_name}`; }
+          catch { names[v.patient_id] = `Patient #${v.patient_id}`; }
+        }
+      }
+      setPatientNames(prev => ({ ...prev, ...names }));
+    } catch { /* non-critical */ }
+  };
+
+  const handleIssueItem = async (e) => {
+    e.preventDefault(); setError(""); setSuccess(""); setLoading(true);
+    try {
+      const payload = {
+        store_item_id: Number(issueForm.store_item_id),
+        quantity_issued: Number(issueForm.quantity_issued),
+        notes: issueForm.notes || null,
+        visit_id: issueForm.target_type === "patient" ? Number(issueForm.visit_id) : null,
+        ward: issueForm.target_type === "ward" ? issueForm.ward : null,
+      };
+      await storeApi.issueItem(payload);
+      setSuccess("Item issued and stock updated.");
+      setIssueForm({ store_item_id: "", target_type: "patient", visit_id: "", ward: "", quantity_issued: "", notes: "" });
+      loadData();
+    } catch (err) { setError(err.response?.data?.detail || "Could not issue item."); }
+    finally { setLoading(false); }
+  };
 
   const handleAddItem = async (e) => {
     e.preventDefault(); setError(""); setSuccess(""); setLoading(true);
@@ -58,9 +96,9 @@ export default function StorePage() {
           </div>
         )}
         <div style={{ display: "flex", gap: "var(--space-3)", marginBottom: "var(--space-5)" }}>
-          {["inventory", "add"].map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{ padding: "10px 18px", borderRadius: "var(--radius-sm)", border: tab === t ? "1px solid var(--color-primary)" : "1px solid var(--color-border)", background: tab === t ? "var(--color-primary-light)" : "var(--color-surface)", color: tab === t ? "var(--color-primary-dark)" : "var(--color-text-muted)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
-              {t === "inventory" ? "View & Update Store" : "Add New Item"}
+          {["inventory", "issue", "add"].map(t => (
+            <button key={t} onClick={() => { setTab(t); if (t === "issue") loadActiveVisits(); }} style={{ padding: "10px 18px", borderRadius: "var(--radius-sm)", border: tab === t ? "1px solid var(--color-primary)" : "1px solid var(--color-border)", background: tab === t ? "var(--color-primary-light)" : "var(--color-surface)", color: tab === t ? "var(--color-primary-dark)" : "var(--color-text-muted)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+              {t === "inventory" ? "View & Update Store" : t === "issue" ? "Issue Item" : "Add New Item"}
             </button>
           ))}
         </div>
@@ -92,6 +130,53 @@ export default function StorePage() {
                 );
               })}
             </div>
+          </Card>
+        )}
+
+        {tab === "issue" && (
+          <Card>
+            <h3 style={{ marginBottom: "var(--space-4)" }}>Issue item to a patient or ward</h3>
+            <form onSubmit={handleIssueItem} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-4)" }}>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <Field label="Item" required>
+                  <select style={inputStyle} value={issueForm.store_item_id} onChange={e => setIssueForm(f => ({ ...f, store_item_id: e.target.value }))} required>
+                    <option value="">Select item...</option>
+                    {items.map(i => <option key={i.id} value={i.id}>{i.name} (Available: {i.quantity} {i.unit})</option>)}
+                  </select>
+                </Field>
+              </div>
+              <Field label="Issue to" required>
+                <select style={inputStyle} value={issueForm.target_type} onChange={e => setIssueForm(f => ({ ...f, target_type: e.target.value, visit_id: "", ward: "" }))}>
+                  <option value="patient">A specific patient</option>
+                  <option value="ward">A ward / department (general)</option>
+                </select>
+              </Field>
+              <Field label="Quantity" required>
+                <input style={inputStyle} type="number" min="1" value={issueForm.quantity_issued} onChange={e => setIssueForm(f => ({ ...f, quantity_issued: e.target.value }))} required />
+              </Field>
+              {issueForm.target_type === "patient" ? (
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <Field label="Patient" required>
+                    <select style={inputStyle} value={issueForm.visit_id} onChange={e => setIssueForm(f => ({ ...f, visit_id: e.target.value }))} required>
+                      <option value="">Select patient...</option>
+                      {activeVisits.map(v => (
+                        <option key={v.id} value={v.id}>
+                          {patientNames[v.patient_id] || `Patient #${v.patient_id}`} {v.ward ? `— ${v.ward}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+              ) : (
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <Field label="Ward / department" required>
+                    <input style={inputStyle} value={issueForm.ward} onChange={e => setIssueForm(f => ({ ...f, ward: e.target.value }))} placeholder="e.g. Medical Ward A" required />
+                  </Field>
+                </div>
+              )}
+              <div style={{ gridColumn: "1 / -1" }}><Field label="Notes"><input style={inputStyle} value={issueForm.notes} onChange={e => setIssueForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional" /></Field></div>
+              <div style={{ gridColumn: "1 / -1" }}><Button type="submit" disabled={loading}>{loading ? "Issuing..." : "Issue item"}</Button></div>
+            </form>
           </Card>
         )}
 

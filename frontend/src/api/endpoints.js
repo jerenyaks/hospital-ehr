@@ -69,6 +69,7 @@ export const storeApi = {
   addItem: async (payload) => { const { data } = await api.post("/store/items", payload); return data; },
   updateItem: async (id, payload) => { const { data } = await api.patch(`/store/items/${id}`, payload); return data; },
   getLowStock: async () => { const { data } = await api.get("/store/items/low-stock"); return data; },
+  issueItem: async (payload) => { const { data } = await api.post("/store/issue", payload); return data; },
 };
 export const inpatientRecordsApi = {
   add: async (payload) => { const { data } = await api.post("/inpatient-records", payload); return data; },
