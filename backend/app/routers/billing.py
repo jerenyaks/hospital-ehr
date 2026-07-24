@@ -3,7 +3,7 @@ Billing routes: generate and manage patient bills, plus pharmacy, lab, and audit
 """
 
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -151,6 +151,109 @@ def reports_summary(
         "store_issuances_count": store_issuances_count,
         "store_issuance_value": round(store_issuance_value, 2),
     }
+
+
+@router.get("/reports/range")
+def reports_by_range(
+    start_date: str,
+    end_date: str,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    """Same shape as /reports/summary, but filtered to a date range (YYYY-MM-DD)."""
+    start = datetime.strptime(start_date, "%Y-%m-%d")
+    end = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+
+    visits_q = db.query(Visit).filter(Visit.checked_in_at >= start, Visit.checked_in_at < end)
+    total_visits = visits_q.count()
+    outpatient_count = visits_q.filter(Visit.visit_type == VisitType.outpatient).count()
+    inpatient_count = visits_q.filter(Visit.visit_type == VisitType.inpatient).count()
+
+    prescriptions_q = db.query(Prescription).filter(Prescription.prescribed_at >= start, Prescription.prescribed_at < end)
+    total_prescriptions = prescriptions_q.count()
+
+    bills_q = db.query(Bill).filter(Bill.created_at >= start, Bill.created_at < end)
+    consultation_revenue = bills_q.with_entities(func.sum(Bill.consultation_fee)).scalar() or 0
+    lab_revenue = bills_q.with_entities(func.sum(Bill.lab_fee)).scalar() or 0
+    pharmacy_revenue = bills_q.with_entities(func.sum(Bill.pharmacy_fee)).scalar() or 0
+    total_revenue = bills_q.with_entities(func.sum(Bill.total_amount)).scalar() or 0
+    paid_revenue = bills_q.filter(Bill.is_paid == True).with_entities(func.sum(Bill.total_amount)).scalar() or 0
+    unpaid_revenue = total_revenue - paid_revenue
+
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "total_visits": total_visits,
+        "outpatient_count": outpatient_count,
+        "inpatient_count": inpatient_count,
+        "total_prescriptions": total_prescriptions,
+        "consultation_revenue": round(consultation_revenue, 2),
+        "lab_revenue": round(lab_revenue, 2),
+        "pharmacy_revenue": round(pharmacy_revenue, 2),
+        "total_revenue": round(total_revenue, 2),
+        "paid_revenue": round(paid_revenue, 2),
+        "unpaid_revenue": round(unpaid_revenue, 2),
+    }
+
+
+@router.get("/reports/timeseries")
+def reports_timeseries(
+    days: int = 30,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    """Daily revenue and visit counts for the last N days, for charting money flow over time."""
+    end = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    start = end - timedelta(days=days)
+
+    results = []
+    cursor = start
+    while cursor < end:
+        next_day = cursor + timedelta(days=1)
+        day_bills = db.query(Bill).filter(Bill.created_at >= cursor, Bill.created_at < next_day)
+        day_revenue = day_bills.with_entities(func.sum(Bill.total_amount)).scalar() or 0
+        day_visits = db.query(Visit).filter(Visit.checked_in_at >= cursor, Visit.checked_in_at < next_day).count()
+        results.append({
+            "date": cursor.strftime("%Y-%m-%d"),
+            "revenue": round(day_revenue, 2),
+            "visits": day_visits,
+        })
+        cursor = next_day
+
+    return results
+
+
+@router.get("/reports/timeseries")
+def reports_timeseries(
+    days: int = 30,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    """Daily revenue and visit counts for the last N days, for the admin's timeline view."""
+    start_date = datetime.utcnow() - timedelta(days=days)
+
+    revenue_rows = (
+        db.query(func.date(Bill.created_at).label("day"), func.sum(Bill.total_amount).label("revenue"))
+        .filter(Bill.created_at >= start_date, Bill.is_paid == True)
+        .group_by(func.date(Bill.created_at))
+        .order_by(func.date(Bill.created_at))
+        .all()
+    )
+    visit_rows = (
+        db.query(func.date(Visit.checked_in_at).label("day"), func.count(Visit.id).label("count"))
+        .filter(Visit.checked_in_at >= start_date)
+        .group_by(func.date(Visit.checked_in_at))
+        .order_by(func.date(Visit.checked_in_at))
+        .all()
+    )
+    revenue_map = {str(r.day): float(r.revenue or 0) for r in revenue_rows}
+    visit_map = {str(v.day): v.count for v in visit_rows}
+    all_days = sorted(set(revenue_map) | set(visit_map))
+
+    return [
+        {"date": d, "revenue": round(revenue_map.get(d, 0), 2), "visits": visit_map.get(d, 0)}
+        for d in all_days
+    ]
 
 # ------------------ New Endpoints ------------------
 @router.get("/pharmacy")

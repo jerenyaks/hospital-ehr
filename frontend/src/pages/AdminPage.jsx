@@ -25,6 +25,10 @@ export default function AdminPage() {
 
   const [reportData, setReportData] = useState(null);
   const [reportLoading, setReportLoading] = useState(false);
+  const [reportPeriod, setReportPeriod] = useState("all");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const [timeseries, setTimeseries] = useState([]);
 
   const [storeItems, setStoreItems] = useState([]);
   const [storeLoading, setStoreLoading] = useState(false);
@@ -35,10 +39,32 @@ export default function AdminPage() {
     catch { setError("Couldn't load staff list."); }
   };
 
+  const getRangeForPeriod = (period) => {
+    const today = new Date();
+    const fmt = (d) => d.toISOString().slice(0, 10);
+    const end = fmt(today);
+    if (period === "today") return { start: end, end };
+    if (period === "week") { const s = new Date(today); s.setDate(s.getDate() - 6); return { start: fmt(s), end }; }
+    if (period === "month") { const s = new Date(today); s.setDate(s.getDate() - 29); return { start: fmt(s), end }; }
+    if (period === "year") { const s = new Date(today); s.setDate(s.getDate() - 364); return { start: fmt(s), end }; }
+    if (period === "custom") return { start: customStart, end: customEnd };
+    return null;
+  };
+
   const loadReports = async () => {
     setReportLoading(true);
-    try { setReportData(await billingApi.getReportsSummary()); }
-    catch { setError("Could not load reports."); }
+    try {
+      if (reportPeriod === "all") {
+        setReportData(await billingApi.getReportsSummary());
+      } else {
+        const range = getRangeForPeriod(reportPeriod);
+        if (range && range.start && range.end) {
+          setReportData(await billingApi.getReportsRange(range.start, range.end));
+        }
+      }
+      const days = reportPeriod === "year" ? 365 : reportPeriod === "month" ? 30 : reportPeriod === "week" ? 7 : 30;
+      setTimeseries(await billingApi.getTimeseries(days));
+    } catch { setError("Could not load reports."); }
     finally { setReportLoading(false); }
   };
 
@@ -54,7 +80,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (pageMode === "reports") loadReports();
     if (pageMode === "store") loadStore();
-  }, [pageMode]);
+  }, [pageMode, reportPeriod]);
 
   const storeUpdateField = (itemId, value) => setStoreUpdateForms(f => ({ ...f, [itemId]: value }));
 
@@ -124,7 +150,22 @@ export default function AdminPage() {
           </Card>
         ) : pageMode === "reports" ? (
           <Card>
-            <h3 style={{ marginBottom: "var(--space-4)" }}>Hospital summary</h3>
+            <h3 style={{ marginBottom: "var(--space-3)" }}>Hospital summary</h3>
+            <div style={{ display: "flex", gap: 8, marginBottom: "var(--space-4)", flexWrap: "wrap", alignItems: "center" }}>
+              {["all", "today", "week", "month", "year", "custom"].map(p => (
+                <button key={p} onClick={() => setReportPeriod(p)} style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", border: reportPeriod === p ? "1px solid var(--color-primary)" : "1px solid var(--color-border)", background: reportPeriod === p ? "var(--color-primary-light)" : "var(--color-surface)", color: reportPeriod === p ? "var(--color-primary-dark)" : "var(--color-text-muted)", fontWeight: 600, fontSize: 12, cursor: "pointer" }}>
+                  {p === "all" ? "All time" : p === "today" ? "Today" : p === "week" ? "This week" : p === "month" ? "This month" : p === "year" ? "This year" : "Custom"}
+                </button>
+              ))}
+              {reportPeriod === "custom" && (
+                <>
+                  <input type="date" style={{ ...inputStyle, width: 140 }} value={customStart} onChange={e => setCustomStart(e.target.value)} />
+                  <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>to</span>
+                  <input type="date" style={{ ...inputStyle, width: 140 }} value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
+                  <Button onClick={loadReports} style={{ padding: "6px 12px", fontSize: 12 }}>Apply</Button>
+                </>
+              )}
+            </div>
             {reportLoading && <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>Loading...</p>}
             {!reportLoading && reportData && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "var(--space-4)" }}>
@@ -138,10 +179,24 @@ export default function AdminPage() {
                 <ReportStat label="Total revenue" value={`KES ${reportData.total_revenue}`} />
                 <ReportStat label="Paid" value={`KES ${reportData.paid_revenue}`} />
                 <ReportStat label="Unpaid" value={`KES ${reportData.unpaid_revenue}`} />
-                <ReportStat label="Store items" value={reportData.total_store_items} />
-                <ReportStat label="Store low stock" value={reportData.store_low_stock_count} />
-                <ReportStat label="Store issuances" value={reportData.store_issuances_count} />
-                <ReportStat label="Store value issued" value={`KES ${reportData.store_issuance_value}`} />
+              </div>
+            )}
+            {timeseries.length > 0 && (
+              <div style={{ marginTop: "var(--space-5)" }}>
+                <h4 style={{ marginBottom: "var(--space-3)" }}>Daily trend</h4>
+                <div style={{ maxHeight: 280, overflowY: "auto" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, padding: "6px 12px", fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", borderBottom: "1px solid var(--color-border)" }}>
+                    <span>Date</span><span>Revenue (KES)</span><span>Visits</span>
+                  </div>
+                  {timeseries.filter(d => d.revenue > 0 || d.visits > 0).slice().reverse().map(d => (
+                    <div key={d.date} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, padding: "6px 12px", fontSize: 13 }}>
+                      <span>{d.date}</span><span>{d.revenue}</span><span>{d.visits}</span>
+                    </div>
+                  ))}
+                  {timeseries.every(d => d.revenue === 0 && d.visits === 0) && (
+                    <p style={{ fontSize: 13, color: "var(--color-text-muted)", padding: "8px 12px" }}>No activity in this period.</p>
+                  )}
+                </div>
               </div>
             )}
           </Card>

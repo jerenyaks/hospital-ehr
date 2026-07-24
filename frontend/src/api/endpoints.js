@@ -86,4 +86,6 @@ export const billingApi = {
   getByVisit: async (visitId) => { const { data } = await api.get(`/billing/visit/${visitId}`); return data; },
   pay: async (billId, paymentMethod) => { const { data } = await api.patch(`/billing/${billId}/pay`, { payment_method: paymentMethod }); return data; },
   getUnpaid: async () => { const { data } = await api.get("/billing/unpaid"); return data; },
+  getReportsRange: async (startDate, endDate) => { const { data } = await api.get("/billing/reports/range", { params: { start_date: startDate, end_date: endDate } }); return data; },
+  getTimeseries: async (days = 30) => { const { data } = await api.get("/billing/reports/timeseries", { params: { days } }); return data; },
 };
