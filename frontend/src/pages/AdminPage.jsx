@@ -115,7 +115,7 @@ export default function AdminPage() {
   return (
     <div>
       <TopBar title="Staff Administration" />
-      <div style={{ maxWidth: "960px", margin: "0 auto", padding: "var(--space-6)" }}>
+      <div style={{ maxWidth: "1000px", margin: "0 auto", padding: "var(--space-6)" }}>
 
         <div style={{ display: "flex", gap: 8, marginBottom: "var(--space-4)" }}>
           <ModeBtn active={pageMode === "staff"} onClick={() => setPageMode("staff")}>Staff Administration</ModeBtn>
@@ -169,34 +169,36 @@ export default function AdminPage() {
             {reportLoading && <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>Loading...</p>}
             {!reportLoading && reportData && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "var(--space-4)" }}>
-                <ReportStat label="Total visits" value={reportData.total_visits} />
-                <ReportStat label="Outpatient visits" value={reportData.outpatient_count} />
-                <ReportStat label="Inpatient visits" value={reportData.inpatient_count} />
-                <ReportStat label="Prescriptions issued" value={reportData.total_prescriptions} />
-                <ReportStat label="Consultation revenue" value={`KES ${reportData.consultation_revenue}`} />
-                <ReportStat label="Lab revenue" value={`KES ${reportData.lab_revenue}`} />
-                <ReportStat label="Pharmacy revenue" value={`KES ${reportData.pharmacy_revenue}`} />
-                <ReportStat label="Total revenue" value={`KES ${reportData.total_revenue}`} />
-                <ReportStat label="Paid" value={`KES ${reportData.paid_revenue}`} />
-                <ReportStat label="Unpaid" value={`KES ${reportData.unpaid_revenue}`} />
+                <ReportStat label="Total visits" value={reportData.total_visits} accent="var(--color-primary)" />
+                <ReportStat label="Outpatient visits" value={reportData.outpatient_count} accent="var(--color-primary)" />
+                <ReportStat label="Inpatient visits" value={reportData.inpatient_count} accent="var(--color-primary)" />
+                <ReportStat label="Prescriptions issued" value={reportData.total_prescriptions} accent="var(--color-primary)" />
+                <ReportStat label="Consultation revenue" value={`KES ${reportData.consultation_revenue}`} accent="#3b82f6" />
+                <ReportStat label="Lab revenue" value={`KES ${reportData.lab_revenue}`} accent="#8b5cf6" />
+                <ReportStat label="Pharmacy revenue" value={`KES ${reportData.pharmacy_revenue}`} accent="#06b6d4" />
+                <ReportStat label="Total revenue" value={`KES ${reportData.total_revenue}`} accent="var(--color-success)" big />
+                <ReportStat label="Paid" value={`KES ${reportData.paid_revenue}`} accent="var(--color-success)" />
+                <ReportStat label="Unpaid" value={`KES ${reportData.unpaid_revenue}`} accent="var(--color-warning)" />
+              </div>
+            )}
+            {reportData && (
+              <div style={{ marginTop: "var(--space-5)" }}>
+                <h4 style={{ marginBottom: "var(--space-3)" }}>Revenue breakdown</h4>
+                <RevenueBreakdown
+                  consultation={reportData.consultation_revenue}
+                  lab={reportData.lab_revenue}
+                  pharmacy={reportData.pharmacy_revenue}
+                />
               </div>
             )}
             {timeseries.length > 0 && (
               <div style={{ marginTop: "var(--space-5)" }}>
-                <h4 style={{ marginBottom: "var(--space-3)" }}>Daily trend</h4>
-                <div style={{ maxHeight: 280, overflowY: "auto" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, padding: "6px 12px", fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", borderBottom: "1px solid var(--color-border)" }}>
-                    <span>Date</span><span>Revenue (KES)</span><span>Visits</span>
-                  </div>
-                  {timeseries.filter(d => d.revenue > 0 || d.visits > 0).slice().reverse().map(d => (
-                    <div key={d.date} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, padding: "6px 12px", fontSize: 13 }}>
-                      <span>{d.date}</span><span>{d.revenue}</span><span>{d.visits}</span>
-                    </div>
-                  ))}
-                  {timeseries.every(d => d.revenue === 0 && d.visits === 0) && (
-                    <p style={{ fontSize: 13, color: "var(--color-text-muted)", padding: "8px 12px" }}>No activity in this period.</p>
-                  )}
-                </div>
+                <h4 style={{ marginBottom: "var(--space-3)" }}>Revenue trend</h4>
+                {timeseries.every(d => d.revenue === 0) ? (
+                  <p style={{ fontSize: 13, color: "var(--color-text-muted)" }}>No paid revenue in this period.</p>
+                ) : (
+                  <RevenueBarChart data={timeseries} />
+                )}
               </div>
             )}
           </Card>
@@ -246,11 +248,83 @@ export default function AdminPage() {
   );
 }
 
-function ReportStat({ label, value }) {
+function ReportStat({ label, value, accent = "var(--color-primary)", big = false }) {
   return (
-    <div style={{ padding: "var(--space-3)", background: "var(--color-bg)", borderRadius: "var(--radius-sm)" }}>
+    <div style={{ padding: "var(--space-4)", background: "var(--color-bg)", borderRadius: "var(--radius)", borderLeft: `3px solid ${accent}` }}>
       <div style={{ color: "var(--color-text-muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</div>
-      <div style={{ fontWeight: 700, fontSize: 20, marginTop: 4 }}>{value}</div>
+      <div style={{ fontWeight: 700, fontSize: big ? 26 : 20, marginTop: 4 }}>{value}</div>
+    </div>
+  );
+}
+
+function RevenueBreakdown({ consultation, lab, pharmacy }) {
+  const total = consultation + lab + pharmacy || 1;
+  const segments = [
+    { label: "Consultation", value: consultation, color: "#3b82f6" },
+    { label: "Lab", value: lab, color: "#8b5cf6" },
+    { label: "Pharmacy", value: pharmacy, color: "#06b6d4" },
+  ];
+  return (
+    <div>
+      <div style={{ display: "flex", width: "100%", height: 28, borderRadius: 6, overflow: "hidden", marginBottom: "var(--space-3)" }}>
+        {segments.map(s => (
+          <div key={s.label} style={{ width: `${(s.value / total) * 100}%`, background: s.color, transition: "width 0.3s" }} title={`${s.label}: KES ${s.value}`} />
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: "var(--space-5)", flexWrap: "wrap" }}>
+        {segments.map(s => (
+          <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: s.color, display: "inline-block" }} />
+            <span style={{ color: "var(--color-text-muted)" }}>{s.label}</span>
+            <span style={{ fontWeight: 600 }}>KES {s.value.toFixed(0)}</span>
+            <span style={{ color: "var(--color-text-muted)", fontSize: 11 }}>({total > 0 ? Math.round((s.value / total) * 100) : 0}%)</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RevenueBarChart({ data }) {
+  const width = 800;
+  const height = 220;
+  const padding = { top: 10, right: 10, bottom: 30, left: 50 };
+  const chartW = width - padding.left - padding.right;
+  const chartH = height - padding.top - padding.bottom;
+  const maxRevenue = Math.max(...data.map(d => d.revenue), 1);
+  const barGap = 2;
+  const barWidth = Math.max((chartW / data.length) - barGap, 1);
+  const showEveryNth = Math.ceil(data.length / 10);
+
+  return (
+    <div style={{ width: "100%", overflowX: "auto" }}>
+      <svg viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", minWidth: 500, height: "auto" }}>
+        {[0, 0.25, 0.5, 0.75, 1].map(f => (
+          <line key={f} x1={padding.left} x2={width - padding.right} y1={padding.top + chartH * (1 - f)} y2={padding.top + chartH * (1 - f)} stroke="var(--color-border)" strokeWidth="1" />
+        ))}
+        {[0, 0.5, 1].map(f => (
+          <text key={f} x={padding.left - 8} y={padding.top + chartH * (1 - f) + 4} textAnchor="end" fontSize="10" fill="var(--color-text-muted)">
+            {Math.round(maxRevenue * f)}
+          </text>
+        ))}
+        {data.map((d, i) => {
+          const barH = (d.revenue / maxRevenue) * chartH;
+          const x = padding.left + i * (chartW / data.length);
+          const y = padding.top + chartH - barH;
+          return (
+            <g key={d.date}>
+              <rect x={x} y={y} width={barWidth} height={barH} fill="var(--color-primary)" rx="2">
+                <title>{d.date}: KES {d.revenue}</title>
+              </rect>
+              {i % showEveryNth === 0 && (
+                <text x={x + barWidth / 2} y={height - 8} textAnchor="middle" fontSize="9" fill="var(--color-text-muted)">
+                  {d.date.slice(5)}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
     </div>
   );
 }

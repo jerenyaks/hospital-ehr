@@ -3,7 +3,7 @@ Billing routes: generate and manage patient bills, plus pharmacy, lab, and audit
 """
 
 from typing import List, Optional
-from datetime import datetime, timedelta, timedelta
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -99,6 +99,14 @@ def list_unpaid(
     _staff: User = Depends(require_role(UserRole.receptionist, UserRole.admin)),
 ):
     return db.query(Bill).filter(Bill.is_paid == False).order_by(Bill.created_at.desc()).all()
+
+@router.get("/all", response_model=List[BillOut])
+def list_all_bills(
+    db: Session = Depends(get_db),
+    _staff: User = Depends(require_role(UserRole.receptionist, UserRole.admin)),
+):
+    """Every bill, paid or unpaid — so nothing disappears from view after payment/discharge."""
+    return db.query(Bill).order_by(Bill.created_at.desc()).all()
 
 @router.get("/patient/{patient_id}", response_model=List[BillOut])
 def patient_billing_history(
@@ -202,34 +210,7 @@ def reports_timeseries(
     db: Session = Depends(get_db),
     _user: User = Depends(get_current_user),
 ):
-    """Daily revenue and visit counts for the last N days, for charting money flow over time."""
-    end = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-    start = end - timedelta(days=days)
-
-    results = []
-    cursor = start
-    while cursor < end:
-        next_day = cursor + timedelta(days=1)
-        day_bills = db.query(Bill).filter(Bill.created_at >= cursor, Bill.created_at < next_day)
-        day_revenue = day_bills.with_entities(func.sum(Bill.total_amount)).scalar() or 0
-        day_visits = db.query(Visit).filter(Visit.checked_in_at >= cursor, Visit.checked_in_at < next_day).count()
-        results.append({
-            "date": cursor.strftime("%Y-%m-%d"),
-            "revenue": round(day_revenue, 2),
-            "visits": day_visits,
-        })
-        cursor = next_day
-
-    return results
-
-
-@router.get("/reports/timeseries")
-def reports_timeseries(
-    days: int = 30,
-    db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
-):
-    """Daily revenue and visit counts for the last N days, for the admin's timeline view."""
+    """Daily revenue and visit counts for the last N days, for the admin's timeline/chart view."""
     start_date = datetime.utcnow() - timedelta(days=days)
 
     revenue_rows = (

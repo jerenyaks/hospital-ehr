@@ -13,6 +13,7 @@ const BLANK_PATIENT = {
 
 export default function ReceptionPage() {
   const [tab, setTab] = useState("checkin");
+  const [billingView, setBillingView] = useState("unpaid");
   const [patients, setPatients] = useState([]);
   const [search, setSearch] = useState("");
   const [selectedPatient, setSelectedPatient] = useState(null);
@@ -20,15 +21,30 @@ export default function ReceptionPage() {
   const [form, setForm] = useState(BLANK_PATIENT);
   const [todaysVisits, setTodaysVisits] = useState([]);
   const [unpaidBills, setUnpaidBills] = useState([]);
+  const [allBills, setAllBills] = useState([]);
+  const [patientNames, setPatientNames] = useState({});
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const resolveNames = async (bills) => {
+    const names = {};
+    for (const bill of bills) {
+      if (!patientNames[bill.patient_id] && !names[bill.patient_id]) {
+        try { const p = await patientsApi.get(bill.patient_id); names[bill.patient_id] = `${p.first_name} ${p.last_name}`; }
+        catch { names[bill.patient_id] = `Patient #${bill.patient_id}`; }
+      }
+    }
+    if (Object.keys(names).length > 0) setPatientNames(prev => ({ ...prev, ...names }));
+  };
+
   const loadVisits = async () => {
     try {
-      const [visits, bills] = await Promise.all([visitsApi.list(), billingApi.getUnpaid()]);
+      const [visits, unpaid, all] = await Promise.all([visitsApi.list(), billingApi.getUnpaid(), billingApi.getAllBills()]);
       setTodaysVisits(visits);
-      setUnpaidBills(bills);
+      setUnpaidBills(unpaid);
+      setAllBills(all);
+      resolveNames([...unpaid, ...all]);
     } catch {}
   };
 
@@ -77,6 +93,8 @@ export default function ReceptionPage() {
   };
 
   const updateField = (key, value) => setForm(f => ({ ...f, [key]: value }));
+
+  const displayedBills = billingView === "unpaid" ? unpaidBills : billingView === "paid" ? allBills.filter(b => b.is_paid) : allBills;
 
   return (
     <div>
@@ -170,17 +188,33 @@ export default function ReceptionPage() {
 
         {tab === "billing" && (
           <Card>
-            <h3 style={{ marginBottom: "var(--space-4)" }}>Unpaid bills</h3>
-            {unpaidBills.length === 0 && <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>No unpaid bills right now.</p>}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-4)" }}>
+              <h3>Billing</h3>
+              <div style={{ display: "flex", gap: 8 }}>
+                {["unpaid", "paid", "all"].map(v => (
+                  <button key={v} onClick={() => setBillingView(v)} style={{ padding: "6px 14px", borderRadius: "var(--radius-sm)", border: billingView === v ? "1px solid var(--color-primary)" : "1px solid var(--color-border)", background: billingView === v ? "var(--color-primary-light)" : "var(--color-surface)", color: billingView === v ? "var(--color-primary-dark)" : "var(--color-text-muted)", fontWeight: 600, fontSize: 12, cursor: "pointer", textTransform: "capitalize" }}>
+                    {v}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {displayedBills.length === 0 && <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>No {billingView === "all" ? "" : billingView} bills right now.</p>}
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {unpaidBills.map(bill => (
-                <div key={bill.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr auto", gap: 12, alignItems: "center", padding: "12px 14px", border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)", fontSize: 13 }}>
-                  <div><div style={{ fontWeight: 600 }}>Visit #{bill.visit_id}</div><div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>Patient #{bill.patient_id}</div></div>
+              {displayedBills.map(bill => (
+                <div key={bill.id} style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr 1fr 1fr auto", gap: 12, alignItems: "center", padding: "12px 14px", border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)", fontSize: 13 }}>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>{patientNames[bill.patient_id] || `Patient #${bill.patient_id}`}</div>
+                    <div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>Visit #{bill.visit_id} {bill.is_paid && <span style={{ color: "var(--color-success)" }}>· Paid</span>}</div>
+                  </div>
                   <div><div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>Consultation</div><div>KES {bill.consultation_fee}</div></div>
                   <div><div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>Lab</div><div>KES {bill.lab_fee.toFixed(0)}</div></div>
                   <div><div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>Pharmacy</div><div>KES {bill.pharmacy_fee.toFixed(0)}</div></div>
                   <div><div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>Total</div><div style={{ fontWeight: 600, color: "var(--color-primary-dark)" }}>KES {bill.total_amount.toFixed(0)}</div></div>
-                  <Button onClick={() => handlePayBill(bill)} style={{ padding: "8px 14px", fontSize: 12 }}>Mark paid</Button>
+                  {!bill.is_paid ? (
+                    <Button onClick={() => handlePayBill(bill)} style={{ padding: "8px 14px", fontSize: 12 }}>Mark paid</Button>
+                  ) : (
+                    <span style={{ fontSize: 11, color: "var(--color-text-muted)" }}>{bill.payment_method}</span>
+                  )}
                 </div>
               ))}
             </div>
