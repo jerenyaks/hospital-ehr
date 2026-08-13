@@ -75,6 +75,10 @@ export const storeApi = {
   updateItem: async (id, payload) => { const { data } = await api.patch(`/store/items/${id}`, payload); return data; },
   getLowStock: async () => { const { data } = await api.get("/store/items/low-stock"); return data; },
   issueItem: async (payload) => { const { data } = await api.post("/store/issue", payload); return data; },
+  restock: async (payload) => { const { data } = await api.post("/store/restock", payload); return data; },
+  getInflows: async () => { const { data } = await api.get("/store/inflows"); return data; },
+  getDashboardSummary: async (days = 30) => { const { data } = await api.get("/store/dashboard/summary", { params: { days } }); return data; },
+  getDashboardTimeseries: async (days = 30) => { const { data } = await api.get("/store/dashboard/timeseries", { params: { days } }); return data; },
 };
 export const inpatientRecordsApi = {
   add: async (payload) => { const { data } = await api.post("/inpatient-records", payload); return data; },

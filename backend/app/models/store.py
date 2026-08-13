@@ -25,7 +25,7 @@ class StoreIssuance(Base):
     """
     Record of a store item being given out — either to a specific patient's
     visit, or generally to a ward/department when it's not patient-specific
-    (e.g. cleaning supplies for a whole ward).
+    (e.g. cleaning supplies for a whole ward). This is the OUTFLOW side.
     """
     __tablename__ = "store_issuances"
 
@@ -37,3 +37,19 @@ class StoreIssuance(Base):
     issued_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     notes = Column(Text, nullable=True)
     issued_at = Column(DateTime, default=datetime.utcnow)
+
+
+class StoreInflow(Base):
+    """
+    Record of stock being added to a store item — a restock/delivery event.
+    This is the INFLOW side, separate from StoreIssuance (outflow).
+    """
+    __tablename__ = "store_inflows"
+
+    id = Column(Integer, primary_key=True, index=True)
+    store_item_id = Column(Integer, ForeignKey("store_items.id"), nullable=False)
+    quantity_added = Column(Integer, nullable=False)
+    added_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    source = Column(String, nullable=True)  # e.g. supplier/donor name, optional
+    notes = Column(Text, nullable=True)
+    added_at = Column(DateTime, default=datetime.utcnow)

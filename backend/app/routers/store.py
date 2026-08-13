@@ -4,15 +4,16 @@ Managed by the store keeper role, and also editable by admin.
 """
 
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from pydantic import BaseModel
 
 from app.core.deps import require_role, get_current_user
 from app.db.session import get_db
 from app.models.user import User, UserRole
-from app.models.store import StoreItem, StoreIssuance
+from app.models.store import StoreItem, StoreIssuance, StoreInflow
 
 router = APIRouter(prefix="/store", tags=["store"])
 
@@ -62,6 +63,22 @@ class StoreIssuanceOut(BaseModel):
     issued_at: datetime
     class Config: from_attributes = True
 
+class StoreInflowCreate(BaseModel):
+    store_item_id: int
+    quantity_added: int
+    source: Optional[str] = None
+    notes: Optional[str] = None
+
+class StoreInflowOut(BaseModel):
+    id: int
+    store_item_id: int
+    quantity_added: int
+    added_by_id: int
+    source: Optional[str]
+    notes: Optional[str]
+    added_at: datetime
+    class Config: from_attributes = True
+
 
 @router.get("/items", response_model=List[StoreItemOut])
 def list_items(
@@ -91,6 +108,8 @@ def update_item(
     db: Session = Depends(get_db),
     _staff: User = Depends(require_role(UserRole.store_keeper, UserRole.admin)),
 ):
+    """Direct correction of item fields (price, reorder level, or a manual quantity fix).
+    For normal restocking, use POST /store/restock instead — it keeps an inflow history."""
     item = db.query(StoreItem).filter(StoreItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Store item not found")
@@ -107,6 +126,39 @@ def low_stock_items(
     _user: User = Depends(get_current_user),
 ):
     return db.query(StoreItem).filter(StoreItem.quantity <= StoreItem.reorder_level).all()
+
+
+@router.post("/restock", response_model=StoreInflowOut, status_code=201)
+def restock_item(
+    payload: StoreInflowCreate,
+    db: Session = Depends(get_db),
+    staff: User = Depends(require_role(UserRole.store_keeper, UserRole.admin)),
+):
+    """Add stock to an item and log it as an inflow event."""
+    item = db.query(StoreItem).filter(StoreItem.id == payload.store_item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Store item not found")
+
+    inflow = StoreInflow(
+        store_item_id=payload.store_item_id,
+        quantity_added=payload.quantity_added,
+        added_by_id=staff.id,
+        source=payload.source,
+        notes=payload.notes,
+    )
+    db.add(inflow)
+    item.quantity += payload.quantity_added
+    db.commit()
+    db.refresh(inflow)
+    return inflow
+
+
+@router.get("/inflows", response_model=List[StoreInflowOut])
+def list_inflows(
+    db: Session = Depends(get_db),
+    _staff: User = Depends(require_role(UserRole.store_keeper, UserRole.admin)),
+):
+    return db.query(StoreInflow).order_by(StoreInflow.added_at.desc()).all()
 
 
 @router.post("/issue", response_model=StoreIssuanceOut, status_code=201)
@@ -154,3 +206,81 @@ def get_issuances_for_visit(
     _user: User = Depends(get_current_user),
 ):
     return db.query(StoreIssuance).filter(StoreIssuance.visit_id == visit_id).order_by(StoreIssuance.issued_at.desc()).all()
+
+
+# ------------------ Dashboard ------------------
+
+@router.get("/dashboard/summary")
+def dashboard_summary(
+    days: int = 30,
+    db: Session = Depends(get_db),
+    _staff: User = Depends(require_role(UserRole.store_keeper, UserRole.admin)),
+):
+    since = datetime.utcnow() - timedelta(days=days)
+
+    total_items = db.query(StoreItem).count()
+    low_stock_count = db.query(StoreItem).filter(StoreItem.quantity <= StoreItem.reorder_level).count()
+    total_stock_value = db.query(func.sum(StoreItem.quantity * StoreItem.unit_price)).scalar() or 0
+
+    total_inflow_qty = db.query(func.sum(StoreInflow.quantity_added)).filter(StoreInflow.added_at >= since).scalar() or 0
+    total_outflow_qty = db.query(func.sum(StoreIssuance.quantity_issued)).filter(StoreIssuance.issued_at >= since).scalar() or 0
+
+    # Category breakdown by current stock value
+    category_rows = (
+        db.query(StoreItem.category, func.sum(StoreItem.quantity * StoreItem.unit_price).label("value"))
+        .group_by(StoreItem.category)
+        .all()
+    )
+    category_breakdown = [{"category": c or "Uncategorized", "value": round(v or 0, 2)} for c, v in category_rows]
+
+    # Top issued items (outflow) in period
+    top_issued_rows = (
+        db.query(StoreItem.name, func.sum(StoreIssuance.quantity_issued).label("total"))
+        .join(StoreIssuance, StoreIssuance.store_item_id == StoreItem.id)
+        .filter(StoreIssuance.issued_at >= since)
+        .group_by(StoreItem.name)
+        .order_by(func.sum(StoreIssuance.quantity_issued).desc())
+        .limit(6)
+        .all()
+    )
+    top_issued = [{"name": n, "total": t} for n, t in top_issued_rows]
+
+    return {
+        "total_items": total_items,
+        "low_stock_count": low_stock_count,
+        "total_stock_value": round(total_stock_value, 2),
+        "total_inflow_qty": int(total_inflow_qty),
+        "total_outflow_qty": int(total_outflow_qty),
+        "category_breakdown": category_breakdown,
+        "top_issued": top_issued,
+    }
+
+
+@router.get("/dashboard/timeseries")
+def dashboard_timeseries(
+    days: int = 30,
+    db: Session = Depends(get_db),
+    _staff: User = Depends(require_role(UserRole.store_keeper, UserRole.admin)),
+):
+    since = datetime.utcnow() - timedelta(days=days)
+
+    inflow_rows = (
+        db.query(func.date(StoreInflow.added_at).label("day"), func.sum(StoreInflow.quantity_added).label("qty"))
+        .filter(StoreInflow.added_at >= since)
+        .group_by(func.date(StoreInflow.added_at))
+        .all()
+    )
+    outflow_rows = (
+        db.query(func.date(StoreIssuance.issued_at).label("day"), func.sum(StoreIssuance.quantity_issued).label("qty"))
+        .filter(StoreIssuance.issued_at >= since)
+        .group_by(func.date(StoreIssuance.issued_at))
+        .all()
+    )
+    inflow_map = {str(r.day): int(r.qty or 0) for r in inflow_rows}
+    outflow_map = {str(r.day): int(r.qty or 0) for r in outflow_rows}
+    all_days = sorted(set(inflow_map) | set(outflow_map))
+
+    return [
+        {"date": d, "inflow": inflow_map.get(d, 0), "outflow": outflow_map.get(d, 0)}
+        for d in all_days
+    ]
