@@ -78,7 +78,7 @@ export const storeApi = {
   restock: async (payload) => { const { data } = await api.post("/store/restock", payload); return data; },
   getInflows: async () => { const { data } = await api.get("/store/inflows"); return data; },
   getDashboardSummary: async (days = 30) => { const { data } = await api.get("/store/dashboard/summary", { params: { days } }); return data; },
-  getDashboardTimeseries: async (days = 30) => { const { data } = await api.get("/store/dashboard/timeseries", { params: { days } }); return data; },
+  getDashboardTimeseries: async (period = "month") => { const { data } = await api.get("/store/dashboard/timeseries", { params: { period } }); return data; },
 };
 export const inpatientRecordsApi = {
   add: async (payload) => { const { data } = await api.post("/inpatient-records", payload); return data; },

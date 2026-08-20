@@ -23,6 +23,7 @@ export default function StorePage() {
   const [dashboard, setDashboard] = useState(null);
   const [timeseries, setTimeseries] = useState([]);
   const [dashLoading, setDashLoading] = useState(false);
+    const [period, setPeriod] = useState("month"); // day | week | month | year
 
   const loadData = async () => {
     try {
@@ -31,14 +32,16 @@ export default function StorePage() {
     } catch { setError("Could not load store items."); }
   };
 
-  const loadDashboard = async () => {
+    const loadDashboard = async (p = period) => {
     setDashLoading(true);
     try {
-      const [summary, series] = await Promise.all([storeApi.getDashboardSummary(30), storeApi.getDashboardTimeseries(30)]);
+      const [summary, series] = await Promise.all([storeApi.getDashboardSummary(30), storeApi.getDashboardTimeseries(p)]);
       setDashboard(summary); setTimeseries(series);
     } catch { setError("Could not load dashboard."); }
     finally { setDashLoading(false); }
   };
+
+  const handlePeriodChange = (p) => { setPeriod(p); loadDashboard(p); };
 
   useEffect(() => { const t = setTimeout(() => { loadData(); loadDashboard(); }, 0); return () => clearTimeout(t); }, []);
 
@@ -170,10 +173,22 @@ export default function StorePage() {
                   </Card>
                 </div>
 
-                <Card>
-                  <h4 style={{ marginBottom: "var(--space-3)" }}>Inflow vs Outflow (last 30 days)</h4>
+                               <Card>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: "var(--space-3)" }}>
+                    <h4>Inflow vs Outflow</h4>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {["day", "week", "month", "year"].map(p => (
+                        <button key={p} onClick={() => handlePeriodChange(p)} style={{
+                          padding: "6px 14px", borderRadius: 999, fontSize: 12, fontWeight: 700,
+                          border: "none", cursor: "pointer", textTransform: "capitalize",
+                          background: period === p ? "linear-gradient(135deg,#8b5cf6,#ec4899)" : "var(--color-bg)",
+                          color: period === p ? "#fff" : "var(--color-text-muted)",
+                        }}>{p}</button>
+                      ))}
+                    </div>
+                  </div>
                   {timeseries.length === 0 || timeseries.every(d => d.inflow === 0 && d.outflow === 0) ? (
-                    <p style={{ fontSize: 13, color: "var(--color-text-muted)" }}>No inflow/outflow activity yet — try restocking or issuing an item.</p>
+                    <p style={{ fontSize: 13, color: "var(--color-text-muted)" }}>No activity in this period.</p>
                   ) : (
                     <InOutChart data={timeseries} />
                   )}
@@ -433,9 +448,9 @@ function InOutChart({ data }) {
                 <rect x={groupX + groupWidth / 2 + 1} y={padding.top + chartH - outflowH} width={barWidth} height={outflowH} fill="#ec4899" rx="1">
                   <title>{d.date} outflow: {d.outflow}</title>
                 </rect>
-                {i % showEveryNth === 0 && (
+                                {i % showEveryNth === 0 && (
                   <text x={groupX + groupWidth / 2} y={height - 8} textAnchor="middle" fontSize="9" fill="var(--color-text-muted)">
-                    {d.date.slice(5)}
+                    {d.date}
                   </text>
                 )}
               </g>

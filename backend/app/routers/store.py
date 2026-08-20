@@ -256,31 +256,89 @@ def dashboard_summary(
     }
 
 
+from calendar import month_abbr
+
 @router.get("/dashboard/timeseries")
 def dashboard_timeseries(
-    days: int = 30,
+    period: str = "month",  # "day" | "week" | "month" | "year"
     db: Session = Depends(get_db),
     _staff: User = Depends(require_role(UserRole.store_keeper, UserRole.admin)),
 ):
-    since = datetime.utcnow() - timedelta(days=days)
+    now = datetime.utcnow()
 
-    inflow_rows = (
-        db.query(func.date(StoreInflow.added_at).label("day"), func.sum(StoreInflow.quantity_added).label("qty"))
-        .filter(StoreInflow.added_at >= since)
-        .group_by(func.date(StoreInflow.added_at))
-        .all()
-    )
-    outflow_rows = (
-        db.query(func.date(StoreIssuance.issued_at).label("day"), func.sum(StoreIssuance.quantity_issued).label("qty"))
-        .filter(StoreIssuance.issued_at >= since)
-        .group_by(func.date(StoreIssuance.issued_at))
-        .all()
-    )
-    inflow_map = {str(r.day): int(r.qty or 0) for r in inflow_rows}
-    outflow_map = {str(r.day): int(r.qty or 0) for r in outflow_rows}
-    all_days = sorted(set(inflow_map) | set(outflow_map))
+    if period == "day":
+        since = now - timedelta(hours=24)
+        bucket_start = (now - timedelta(hours=23)).replace(minute=0, second=0, microsecond=0)
+        bucket_delta = timedelta(hours=1)
+        num_buckets = 24
+        bucket_fmt = "%H:00"
+    elif period == "week":
+        since = now - timedelta(days=7)
+        bucket_start = (now - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
+        bucket_delta = timedelta(days=1)
+        num_buckets = 7
+        bucket_fmt = "%a"
+    elif period == "year":
+        since = now - timedelta(days=365)
+        num_buckets = 12
+        bucket_start = None
+        bucket_delta = None
+        bucket_fmt = None
+    else:  # month (default)
+        since = now - timedelta(days=30)
+        bucket_start = (now - timedelta(days=29)).replace(hour=0, minute=0, second=0, microsecond=0)
+        bucket_delta = timedelta(days=1)
+        num_buckets = 30
+        bucket_fmt = "%b %d"
+
+    inflows = db.query(StoreInflow).filter(StoreInflow.added_at >= since).all()
+    outflows = db.query(StoreIssuance).filter(StoreIssuance.issued_at >= since).all()
+
+    if period == "year":
+        months = []
+        y, m = now.year, now.month
+        for _ in range(12):
+            months.append((y, m))
+            m -= 1
+            if m == 0:
+                m = 12
+                y -= 1
+        months.reverse()
+        keys = [f"{y}-{m:02d}" for y, m in months]
+        labels = {f"{y}-{m:02d}": f"{month_abbr[m]} {y}" for y, m in months}
+        inflow_map = {k: 0 for k in keys}
+        outflow_map = {k: 0 for k in keys}
+        for inf in inflows:
+            key = f"{inf.added_at.year}-{inf.added_at.month:02d}"
+            if key in inflow_map:
+                inflow_map[key] += inf.quantity_added
+        for out in outflows:
+            key = f"{out.issued_at.year}-{out.issued_at.month:02d}"
+            if key in outflow_map:
+                outflow_map[key] += out.quantity_issued
+        return [
+            {"date": labels[k], "inflow": inflow_map[k], "outflow": outflow_map[k]}
+            for k in keys
+        ]
+
+    bucket_keys = [bucket_start + i * bucket_delta for i in range(num_buckets)]
+
+    def bucket_index(dt):
+        idx = int((dt - bucket_start) / bucket_delta)
+        return idx if 0 <= idx < num_buckets else None
+
+    inflow_totals = [0] * num_buckets
+    outflow_totals = [0] * num_buckets
+    for inf in inflows:
+        idx = bucket_index(inf.added_at)
+        if idx is not None:
+            inflow_totals[idx] += inf.quantity_added
+    for out in outflows:
+        idx = bucket_index(out.issued_at)
+        if idx is not None:
+            outflow_totals[idx] += out.quantity_issued
 
     return [
-        {"date": d, "inflow": inflow_map.get(d, 0), "outflow": outflow_map.get(d, 0)}
-        for d in all_days
+        {"date": bucket_keys[i].strftime(bucket_fmt), "inflow": inflow_totals[i], "outflow": outflow_totals[i]}
+        for i in range(num_buckets)
     ]
