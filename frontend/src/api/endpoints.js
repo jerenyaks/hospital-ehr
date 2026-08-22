@@ -84,6 +84,11 @@ export const inpatientRecordsApi = {
   add: async (payload) => { const { data } = await api.post("/inpatient-records", payload); return data; },
   getForVisit: async (visitId) => { const { data } = await api.get(`/inpatient-records/visit/${visitId}`); return data; },
 };
+export const wardsApi = {
+  list: async () => { const { data } = await api.get("/wards"); return data; },
+  add: async (payload) => { const { data } = await api.post("/wards", payload); return data; },
+  getOccupancy: async () => { const { data } = await api.get("/wards/occupancy"); return data; },
+};
 export const billingApi = {
   getReportsSummary: async () => { const { data } = await api.get("/billing/reports/summary"); return data; },
   generate: async (visitId) => { const { data } = await api.post(`/billing/generate/${visitId}`); return data; },

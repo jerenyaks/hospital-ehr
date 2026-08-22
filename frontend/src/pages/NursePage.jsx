@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import TopBar from "../components/TopBar";
 import { Card, Button, Field, inputStyle, ErrorBanner, SuccessBanner } from "../components/ui";
 import StatusPill from "../components/StatusPill";
-import { visitsApi, patientsApi, inpatientRecordsApi } from "../api/endpoints";
+import { visitsApi, patientsApi, inpatientRecordsApi, wardsApi } from "../api/endpoints";
 
 const BLANK_VITALS = {
   temperature_celsius: "",
@@ -28,6 +28,7 @@ export default function NursePage() {
   const [awaitingBed, setAwaitingBed] = useState([]);
   const [bedForms, setBedForms] = useState({});
   const [bedLoadingId, setBedLoadingId] = useState(null);
+  const [occupancy, setOccupancy] = useState([]);
 
   const [activeInpatients, setActiveInpatients] = useState([]);
   const [selectedInpatient, setSelectedInpatient] = useState(null);
@@ -57,8 +58,9 @@ export default function NursePage() {
 
   const loadAwaitingBed = async () => {
     try {
-      const visits = await visitsApi.getAwaitingBed();
+      const [visits, occ] = await Promise.all([visitsApi.getAwaitingBed(), wardsApi.getOccupancy()]);
       setAwaitingBed(visits);
+      setOccupancy(occ);
       const names = {};
       for (const v of visits) {
         if (!patientNames[v.patient_id]) {
@@ -171,7 +173,7 @@ export default function NursePage() {
   const handleAssignBed = async (visitId) => {
     const form = bedForms[visitId] || {};
     if (!form.ward || !form.bed_number) {
-      setError("Please enter both ward and bed number.");
+      setError("Please select both a ward and a bed.");
       return;
     }
     setError(""); setSuccess(""); setBedLoadingId(visitId);
@@ -190,7 +192,7 @@ export default function NursePage() {
   return (
     <div>
       <TopBar title="Nursing Station" />
-      <div style={{ maxWidth: "960px", margin: "0 auto", padding: "var(--space-6)" }}>
+      <div style={{ maxWidth: "1000px", margin: "0 auto", padding: "var(--space-6)" }}>
 
         <div style={{ display: "flex", gap: 8, marginBottom: "var(--space-4)" }}>
           <ModeBtn active={pageMode === "triage"} onClick={() => setPageMode("triage")}>Triage</ModeBtn>
@@ -204,36 +206,61 @@ export default function NursePage() {
         {success && <div style={{ marginBottom: "var(--space-4)" }}><SuccessBanner message={success} /></div>}
 
         {pageMode === "beds" ? (
-          <Card>
-            <h3 style={{ marginBottom: "var(--space-4)" }}>Patients awaiting bed assignment</h3>
-            {awaitingBed.length === 0 && (
-              <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>No patients waiting for a bed right now.</p>
-            )}
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {awaitingBed.map((v) => {
-                const form = bedForms[v.id] || {};
-                return (
-                  <div key={v.id} style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)", padding: "var(--space-3) var(--space-4)" }}>
-                    <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>
-                      {patientNames[v.patient_id] || `Patient #${v.patient_id}`}
-                    </div>
-                    {v.chief_complaint && <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 8 }}>{v.chief_complaint}</div>}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, alignItems: "flex-end" }}>
-                      <Field label="Ward">
-                        <input style={inputStyle} value={form.ward || ""} onChange={e => updateBedForm(v.id, "ward", e.target.value)} placeholder="e.g. Medical Ward A" />
-                      </Field>
-                      <Field label="Bed number">
-                        <input style={inputStyle} value={form.bed_number || ""} onChange={e => updateBedForm(v.id, "bed_number", e.target.value)} placeholder="e.g. Bed 12" />
-                      </Field>
-                      <Button onClick={() => handleAssignBed(v.id)} disabled={bedLoadingId === v.id} style={{ padding: "10px 16px" }}>
-                        {bedLoadingId === v.id ? "Assigning..." : "Assign bed"}
-                      </Button>
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+            <Card>
+              <h3 style={{ marginBottom: "var(--space-3)" }}>Ward capacity &amp; occupancy</h3>
+              {occupancy.length === 0 && <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>No wards set up yet — ask an admin to add one.</p>}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {occupancy.map(w => (
+                  <div key={w.id} style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 2fr", gap: 10, alignItems: "center", padding: "10px 12px", background: "var(--color-bg)", borderRadius: "var(--radius-sm)", fontSize: 13 }}>
+                    <div style={{ fontWeight: 600 }}>{w.name}</div>
+                    <div style={{ color: "var(--color-text-muted)" }}>{w.occupied}/{w.capacity} occupied · <span style={{ color: w.free > 0 ? "var(--color-success)" : "var(--color-danger)", fontWeight: 600 }}>{w.free} free</span></div>
+                    <div style={{ height: 8, borderRadius: 4, background: "var(--color-border)", overflow: "hidden" }}>
+                      <div style={{ width: `${w.capacity > 0 ? (w.occupied / w.capacity) * 100 : 0}%`, height: "100%", background: w.free === 0 ? "var(--color-danger)" : w.free <= 2 ? "var(--color-warning)" : "var(--color-success)" }} />
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          </Card>
+                ))}
+              </div>
+            </Card>
+
+            <Card>
+              <h3 style={{ marginBottom: "var(--space-4)" }}>Patients awaiting bed assignment</h3>
+              {awaitingBed.length === 0 && (
+                <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>No patients waiting for a bed right now.</p>
+              )}
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {awaitingBed.map((v) => {
+                  const form = bedForms[v.id] || {};
+                  const selectedWard = occupancy.find(w => w.name === form.ward);
+                  return (
+                    <div key={v.id} style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)", padding: "var(--space-3) var(--space-4)" }}>
+                      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>
+                        {patientNames[v.patient_id] || `Patient #${v.patient_id}`}
+                      </div>
+                      {v.chief_complaint && <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 8 }}>{v.chief_complaint}</div>}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, alignItems: "flex-end" }}>
+                        <Field label="Ward">
+                          <select style={inputStyle} value={form.ward || ""} onChange={e => updateBedForm(v.id, "ward", e.target.value)}>
+                            <option value="">Select ward...</option>
+                            {occupancy.map(w => <option key={w.id} value={w.name} disabled={w.free === 0}>{w.name} ({w.free} free)</option>)}
+                          </select>
+                        </Field>
+                        <Field label="Bed">
+                          <select style={inputStyle} value={form.bed_number || ""} onChange={e => updateBedForm(v.id, "bed_number", e.target.value)} disabled={!form.ward}>
+                            <option value="">Select bed...</option>
+                            {selectedWard?.free_beds.map(b => <option key={b} value={b}>{b}</option>)}
+                          </select>
+                        </Field>
+                        <Button onClick={() => handleAssignBed(v.id)} disabled={bedLoadingId === v.id} style={{ padding: "10px 16px" }}>
+                          {bedLoadingId === v.id ? "Assigning..." : "Assign bed"}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          </div>
         ) : pageMode === "care" ? (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: "var(--space-5)" }}>
             <Card>

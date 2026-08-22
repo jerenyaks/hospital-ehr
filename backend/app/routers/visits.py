@@ -17,6 +17,7 @@ from app.models.patient import Patient
 from app.models.prescription import Prescription
 from app.models.user import User, UserRole
 from app.models.visit import Visit, VisitStatus, VisitType
+from app.models.ward import Ward
 from app.models.vitals import Vitals
 from app.schemas.visit import (
     VisitCreate, VisitOut, VisitStatusUpdate, VisitDetailOut,
@@ -164,14 +165,34 @@ def assign_bed(
     db: Session = Depends(get_db),
     nurse: User = Depends(require_role(UserRole.nurse, UserRole.admin)),
 ):
-    """Nurse assigns ward/bed to a patient already classified as inpatient by a doctor."""
+    """Nurse assigns ward/bed to a patient already classified as inpatient by a doctor.
+    Validates the ward exists, has capacity, and the specific bed isn't already occupied."""
     visit = db.query(Visit).filter(Visit.id == visit_id).first()
     if not visit:
         raise HTTPException(status_code=404, detail="Visit not found")
     if visit.visit_type != VisitType.inpatient:
         raise HTTPException(status_code=400, detail="This patient has not been classified as inpatient yet.")
-    visit.ward = payload.get("ward")
-    visit.bed_number = payload.get("bed_number")
+
+    ward_name = payload.get("ward")
+    bed_number = payload.get("bed_number")
+    if not ward_name or not bed_number:
+        raise HTTPException(status_code=400, detail="Ward and bed number are required.")
+
+    ward = db.query(Ward).filter(Ward.name == ward_name).first()
+    if not ward:
+        raise HTTPException(status_code=404, detail="Ward not found.")
+
+    already_occupied = db.query(Visit).filter(
+        Visit.visit_type == VisitType.inpatient,
+        Visit.status == VisitStatus.admitted,
+        Visit.ward == ward_name,
+        Visit.bed_number == bed_number,
+    ).first()
+    if already_occupied:
+        raise HTTPException(status_code=400, detail=f"{bed_number} in {ward_name} is already occupied.")
+
+    visit.ward = ward_name
+    visit.bed_number = bed_number
     visit.status = VisitStatus.admitted
     db.commit()
     db.refresh(visit)

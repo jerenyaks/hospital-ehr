@@ -18,6 +18,7 @@ from app.models.lab_catalog import LabTestCatalog
 from app.models.inpatient_record import InpatientDailyRecord
 from app.models.store import StoreItem, StoreIssuance, StoreInflow
 from app.models.suppliers import Supplier, SupplyOrder
+from app.models.ward import Ward
 from sqlalchemy import text
 from app.models.patient import Patient, Gender, BloodGroup
 from app.models.visit import Visit, VisitStatus, VisitType
@@ -46,6 +47,15 @@ COMMON_LAB_TESTS = [
     ("Blood Grouping", "Haematology", 300.0),
     ("ESR", "Haematology", 250.0),
     ("Hepatitis B Screening", "Serology", 500.0),
+]
+
+SAMPLE_WARDS = [
+    ("Medical Ward A", 20),
+    ("Medical Ward B", 15),
+    ("Maternity Ward", 12),
+    ("Pediatric Ward", 10),
+    ("ICU", 6),
+    ("Surgical Ward", 14),
 ]
 
 
@@ -133,6 +143,19 @@ def seed():
             db.add(Supplier(name=name, contact_person=contact, phone=phone, email=email, license_number=license_no, is_certified=certified, address=address))
             print(f"Added supplier: {name}")
         db.commit()
+
+        existing_ward_names = {w.name for w in db.query(Ward).all()}
+        wards_added = 0
+        for name, capacity in SAMPLE_WARDS:
+            if name in existing_ward_names:
+                continue
+            db.add(Ward(name=name, capacity=capacity))
+            wards_added += 1
+        db.commit()
+        if wards_added:
+            print(f"Added {wards_added} wards")
+        else:
+            print("Wards already set up, skipping.")
 
         existing_test_names = {t.test_name for t in db.query(LabTestCatalog).all()}
         catalog_added = 0
@@ -230,3 +253,4 @@ def print_summary():
 
 if __name__ == "__main__":
     seed()
+    

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import TopBar from "../components/TopBar";
 import { Card, Button, Field, inputStyle, ErrorBanner, SuccessBanner } from "../components/ui";
-import { usersApi, billingApi, storeApi } from "../api/endpoints";
+import { usersApi, billingApi, storeApi, wardsApi } from "../api/endpoints";
 
 const BLANK_USER = { full_name: "", email: "", password: "", role: "receptionist" };
 
@@ -44,6 +44,11 @@ export default function AdminPage() {
   const [storeLoading, setStoreLoading] = useState(false);
   const [storeUpdateForms, setStoreUpdateForms] = useState({});
 
+  const [wards, setWards] = useState([]);
+  const [occupancy, setOccupancy] = useState([]);
+  const [wardsLoading, setWardsLoading] = useState(false);
+  const [newWard, setNewWard] = useState({ name: "", capacity: 10 });
+
   const loadUsers = async () => {
     try { setUsers(await usersApi.list()); }
     catch { setError("Couldn't load staff list."); }
@@ -85,11 +90,21 @@ export default function AdminPage() {
     finally { setStoreLoading(false); }
   };
 
+  const loadWards = async () => {
+    setWardsLoading(true);
+    try {
+      const [w, occ] = await Promise.all([wardsApi.list(), wardsApi.getOccupancy()]);
+      setWards(w); setOccupancy(occ);
+    } catch { setError("Could not load wards."); }
+    finally { setWardsLoading(false); }
+  };
+
   useEffect(() => { const t = setTimeout(loadUsers, 0); return () => clearTimeout(t); }, []);
 
   useEffect(() => {
     if (pageMode === "reports") loadReports();
     if (pageMode === "store") loadStore();
+    if (pageMode === "wards") loadWards();
   }, [pageMode, reportPeriod]);
 
   const storeUpdateField = (itemId, value) => setStoreUpdateForms(f => ({ ...f, [itemId]: value }));
@@ -104,6 +119,17 @@ export default function AdminPage() {
       setStoreUpdateForms(f => { const n = { ...f }; delete n[item.id]; return n; });
       loadStore();
     } catch (err) { setError(err.response?.data?.detail || "Could not update item."); }
+  };
+
+  const handleAddWard = async (e) => {
+    e.preventDefault(); setError(""); setSuccess(""); setLoading(true);
+    try {
+      await wardsApi.add({ name: newWard.name, capacity: Number(newWard.capacity) });
+      setSuccess(`${newWard.name} added with ${newWard.capacity} beds.`);
+      setNewWard({ name: "", capacity: 10 });
+      loadWards();
+    } catch (err) { setError(err.response?.data?.detail || "Could not add ward."); }
+    finally { setLoading(false); }
   };
 
   const handleCreate = async (e) => {
@@ -127,13 +153,47 @@ export default function AdminPage() {
       <TopBar title="Staff Administration" />
       <div style={{ maxWidth: "1080px", margin: "0 auto", padding: "var(--space-6)" }}>
 
-        <div style={{ display: "flex", gap: 8, marginBottom: "var(--space-4)" }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: "var(--space-4)", flexWrap: "wrap" }}>
           <ModeBtn active={pageMode === "staff"} onClick={() => setPageMode("staff")}>Staff Administration</ModeBtn>
           <ModeBtn active={pageMode === "reports"} onClick={() => setPageMode("reports")}>Reports</ModeBtn>
           <ModeBtn active={pageMode === "store"} onClick={() => setPageMode("store")}>Store</ModeBtn>
+          <ModeBtn active={pageMode === "wards"} onClick={() => setPageMode("wards")}>Wards & Beds</ModeBtn>
         </div>
 
-        {pageMode === "store" ? (
+        {error && <div style={{ marginBottom: "var(--space-4)" }}><ErrorBanner message={error} /></div>}
+        {success && <div style={{ marginBottom: "var(--space-4)" }}><SuccessBanner message={success} /></div>}
+
+        {pageMode === "wards" ? (
+          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "var(--space-5)" }}>
+            <Card>
+              <h3 style={{ marginBottom: "var(--space-4)" }}>Ward capacity &amp; occupancy</h3>
+              {wardsLoading && <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>Loading...</p>}
+              {!wardsLoading && occupancy.length === 0 && <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>No wards yet — add one to the right.</p>}
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {occupancy.map(w => (
+                  <div key={w.id} style={{ padding: "12px 14px", border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <span style={{ fontWeight: 600, fontSize: 14 }}>{w.name}</span>
+                      <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>{w.occupied}/{w.capacity} occupied</span>
+                    </div>
+                    <div style={{ height: 8, borderRadius: 4, background: "var(--color-bg)", overflow: "hidden" }}>
+                      <div style={{ width: `${w.capacity > 0 ? (w.occupied / w.capacity) * 100 : 0}%`, height: "100%", background: w.free === 0 ? "var(--color-danger)" : w.free <= 2 ? "var(--color-warning)" : "var(--color-success)" }} />
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 4 }}>{w.free} bed{w.free !== 1 ? "s" : ""} free</div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+            <Card>
+              <h3 style={{ marginBottom: "var(--space-4)" }}>Add a ward</h3>
+              <form onSubmit={handleAddWard} style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+                <Field label="Ward name" required><input style={inputStyle} value={newWard.name} onChange={e => setNewWard(w => ({ ...w, name: e.target.value }))} placeholder="e.g. Medical Ward C" required /></Field>
+                <Field label="Total bed capacity" required><input style={inputStyle} type="number" min="1" value={newWard.capacity} onChange={e => setNewWard(w => ({ ...w, capacity: e.target.value }))} required /></Field>
+                <Button type="submit" disabled={loading}>{loading ? "Adding..." : "Add ward"}</Button>
+              </form>
+            </Card>
+          </div>
+        ) : pageMode === "store" ? (
           <Card>
             <h3 style={{ marginBottom: "var(--space-4)" }}>Store inventory (food & patient supplies)</h3>
             {storeLoading && <p style={{ color: "var(--color-text-muted)", fontSize: 13 }}>Loading...</p>}
